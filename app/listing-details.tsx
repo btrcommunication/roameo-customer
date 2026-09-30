@@ -163,27 +163,21 @@ export default function ListingDetailsScreen() {
       </View>
 
       <ScrollView ref={scrollRef} style={styles.container} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 90 }}>
-        
         {/* Banner Media Block */}
         <View style={styles.mediaBannerContainer}>
-          <Image 
-            source={listing.thumbnail ? { uri: listing.thumbnail } : require('../assets/images/Roameo-logo.png')} 
-            style={styles.mainBannerImage} 
-          />
-          
-          {/* Brand Logo Floating Badge */}
+          <Image
+            source={listing.thumbnail ? { uri: listing.thumbnail } : require('../assets/images/Roameo-logo.png')}
+            style={styles.mainBannerImage}
+          />{/* Brand Logo Floating Badge */}
           <View style={styles.brandLogoWrapper}>
             <Text style={styles.brandLogoMiniText}>COUPON</Text>
             <Text style={styles.brandLogoMainText} numberOfLines={2}>{vendorName}</Text>
             <Text style={styles.brandLogoSubText}>{listing.category}</Text>
-          </View>
-
-          {listing.thumbnail && <TouchableOpacity style={styles.thumbnailTrack}
+          </View>{!!listing.thumbnail && <TouchableOpacity style={styles.thumbnailTrack}
             accessibilityLabel="View coupon photo"
             onPress={() => { setActiveTab('Photos'); scrollRef.current?.scrollTo({ y: sectionOffsets.current.Photos || 0, animated: true }); }}>
             <Image source={{ uri: listing.thumbnail }} style={styles.thumbImage} />
           </TouchableOpacity>}
-
         </View>
 
         {/* Title Meta block - DYNAMIC */}
@@ -239,15 +233,11 @@ export default function ListingDetailsScreen() {
         <View style={styles.splitBodyContainer} onLayout={event => { sectionOffsets.current.Overview = event.nativeEvent.layout.y; }}>
           <View style={styles.leftDetailColumn}>
             <Text style={styles.blockHeading}>Description</Text>
-            <Text style={styles.bodyDescriptionText}>
-              {listing.description || 'No description available for this listing.'}
-              
-            </Text>
+            <Text style={styles.bodyDescriptionText}>{listing.description || 'No description available for this listing.'}</Text>
 
             <Text style={[styles.blockHeading, { marginTop: 16 }]}>Location</Text>
             <Text style={styles.locationBodyText}>{location}</Text>
             <Text style={styles.distanceValueText}>{listing.distance || ''}</Text>
-            
             <TouchableOpacity style={styles.directionsPillButton} disabled={!listing.city} onPress={() => Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location)}`).catch(() => setActionMessage('Unable to open directions.'))}>
               <Feather name="compass" size={14} color="#FF6B00" />
               <Text style={styles.directionsPillText}>Directions</Text>
@@ -260,30 +250,24 @@ export default function ListingDetailsScreen() {
               <View style={styles.mapGridLineH} />
               <View style={[styles.mapGridLineV, { left: '35%' }]} />
               <View style={[styles.mapGridLineV, { left: '75%' }]} />
-              
-              <Text style={[styles.mapLabelRoute, { top: 20, left: 10, transform: [{ rotate: '-45deg' }] }]}>Main St</Text>
-              <Text style={[styles.mapLabelRoute, { top: 12, right: 15 }]}>Park Ave</Text>
-              
+              <View style={{ position: 'absolute', top: 20, left: 10, transform: [{ rotate: '-45deg' }] }}><Text style={styles.mapLabelRoute}>Main St</Text></View>
+              <View style={{ position: 'absolute', top: 12, right: 15 }}><Text style={styles.mapLabelRoute}>Park Ave</Text></View>
               <View style={styles.mapPoiContainer}>
                 <Ionicons name="library" size={10} color="#007AFF" />
                 <Text style={styles.mapPoiText}>Nearby Landmark</Text>
               </View>
-
               <View style={[styles.mapPoiContainer, { top: 95 }]}>
                 <Ionicons name="business" size={10} color="#007AFF" />
                 <Text style={styles.mapPoiText}>Business District</Text>
               </View>
-
               <View style={styles.mapPinAbsoluteAnchor}>
                 <Ionicons name="location" size={32} color="#E53935" />
                 <View style={styles.mapPinPulseRing} />
               </View>
-
               <View style={styles.mapLocationTargetButton}>
                 <MaterialCommunityIcons name="target" size={18} color="#1C1C1E" />
               </View>
-
-              <Text style={styles.googleWatermark}>Google</Text>
+              <View style={{ position: 'absolute', bottom: 4, right: 6 }}><Text style={styles.googleWatermark}>Google</Text></View>
             </View>
           </View>
         </View>
@@ -336,7 +320,7 @@ export default function ListingDetailsScreen() {
         </View>
         <View style={styles.analyticsSection} onLayout={event => { sectionOffsets.current.Photos = event.nativeEvent.layout.y; }}>
           <Text style={styles.blockHeading}>Photos</Text>
-          {listing.thumbnail ? <Image source={{ uri: listing.thumbnail }} style={[styles.mainBannerImage, { height: 180 }]} />
+          {!!listing.thumbnail ? <Image source={{ uri: listing.thumbnail }} style={[styles.mainBannerImage, { height: 180 }]} />
             : <Text style={styles.bodyDescriptionText}>No photos available.</Text>}
         </View>
 
@@ -347,7 +331,6 @@ export default function ListingDetailsScreen() {
               <Text style={styles.blockHeading}>You Might Also Like</Text>
               <TouchableOpacity onPress={() => router.push('/(tabs)/listings')}><Text style={styles.sectionActionText}>See All</Text></TouchableOpacity>
             </View>
-            
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingLeft: 16 }}>
               {similarListings.map((item) => (
                 <TouchableOpacity 

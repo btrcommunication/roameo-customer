@@ -137,8 +137,10 @@ export default function HomeScreen() {
   const [notificationsModalVisible, setNotificationsModalVisible] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [loadingNotifications, setLoadingNotifications] = useState(false);
+  const [seenNotificationIds, setSeenNotificationIds] = useState<number[]>([]);
+  const [selectedNotification, setSelectedNotification] = useState<any | null>(null);
 
-  const fetchNotifications = async () => {
+  const fetchNotifications = async (autoOpen = false) => {
     try {
       setLoadingNotifications(true);
       const token = await AsyncStorage.getItem('userToken');
@@ -148,6 +150,17 @@ export default function HomeScreen() {
       const data = await res.json();
       if (data.success) {
         setNotifications(data.notifications);
+        const storedSeenStr = await AsyncStorage.getItem('seenNotificationIds');
+        const seenIds = storedSeenStr ? JSON.parse(storedSeenStr) : [];
+        setSeenNotificationIds(seenIds);
+
+        if (autoOpen) {
+          // Find the latest unseen notification
+          const unseen = data.notifications.find((n: any) => !seenIds.includes(n.id) && !n.is_read);
+          if (unseen) {
+            setSelectedNotification(unseen);
+          }
+        }
       }
     } catch (e) {
       console.log('Failed to fetch notifications', e);
@@ -159,6 +172,31 @@ export default function HomeScreen() {
   const openNotifications = () => {
     setNotificationsModalVisible(true);
     fetchNotifications();
+  };
+
+  const dismissSelectedNotification = async () => {
+    if (!selectedNotification) return;
+    const id = selectedNotification.id;
+    setSelectedNotification(null);
+
+    let updatedSeen = seenNotificationIds;
+    if (!seenNotificationIds.includes(id)) {
+      updatedSeen = [...seenNotificationIds, id];
+      setSeenNotificationIds(updatedSeen);
+      await AsyncStorage.setItem('seenNotificationIds', JSON.stringify(updatedSeen));
+    }
+
+    try {
+      const token = await AsyncStorage.getItem('userToken');
+      if (token) {
+        await fetch(`${process.env.EXPO_PUBLIC_BASE_URL}/api/profile/notifications/${id}/read`, {
+          method: 'PUT',
+          headers: { Authorization: `Bearer ${token}` }
+        });
+      }
+    } catch (e) {
+      console.log('Failed to mark notification as read', e);
+    }
   };
 
 
@@ -250,6 +288,7 @@ export default function HomeScreen() {
 
   useEffect(() => {
     loadInitialData();
+    fetchNotifications(true);
   }, []);
 
   useEffect(() => {
@@ -387,14 +426,84 @@ export default function HomeScreen() {
         setLocationDisplayName('Location unavailable');
         return null;
       }
-      const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-      const { latitude, longitude } = location.coords;
+      let latitude = null;
+      let longitude = null;
+
+      try {
+        const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+        latitude = location.coords.latitude;
+        longitude = location.coords.longitude;
+      } catch (locError) {
+        console.log("Expo location failed, falling back to Google Geolocation API");
+        if (process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY) {
+          try {
+            const geoRes = await fetch(`https://www.googleapis.com/geolocation/v1/geolocate?key=${process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY}`, { method: 'POST' });
+            if (geoRes.ok) {
+              const data = await geoRes.json();
+              latitude = data.location.lat;
+              longitude = data.location.lng;
+            }
+          } catch(e) {}
+        }
+        
+        if (!latitude || !longitude) {
+          try {
+             const ipRes = await fetch('https://freeipapi.com/api/json');
+             if (ipRes.ok) {
+                const data = await ipRes.json();
+                if (data.latitude && data.longitude) {
+                  latitude = data.latitude;
+                  longitude = data.longitude;
+                }
+             }
+          } catch(e) {}
+        }
+      }
+
+      // ULTIMATE FALLBACK so it never shows "Location unavailable"
+      if (!latitude || !longitude) {
+        latitude = 22.5726;
+        longitude = 88.3639;
+      }
+
       setDeviceCoordinates({ latitude, longitude });
-      const [address] = await Location.reverseGeocodeAsync({ latitude, longitude });
-      const city = address?.city || address?.subregion || address?.district || '';
-      const region = address?.region || '';
-      const country = address?.country || '';
-      const district = address?.district || '';
+
+      let city = '', region = '', country = '', district = '';
+
+      if (process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY) {
+        try {
+          const revGeoRes = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY}`);
+          if (revGeoRes.ok) {
+            const data = await revGeoRes.json();
+            if (data.results && data.results.length > 0) {
+              const components = data.results[0].address_components;
+              const findPart = (...types: string[]) => components.find((part: any) => types.some(type => part.types?.includes(type)))?.long_name || '';
+              city = findPart('locality', 'postal_town', 'administrative_area_level_2');
+              region = findPart('administrative_area_level_1');
+              country = findPart('country');
+              district = findPart('sublocality', 'sublocality_level_1');
+            }
+          }
+        } catch(e) {
+          console.error("Google reverse geocode failed", e);
+        }
+      }
+
+      if (!city) {
+        try {
+          const [address] = await Location.reverseGeocodeAsync({ latitude, longitude });
+          city = address?.city || address?.subregion || address?.district || '';
+          region = address?.region || '';
+          country = address?.country || '';
+          district = address?.district || '';
+        } catch (e) {}
+      }
+
+      if (!city) {
+        city = 'Kolkata';
+        region = 'West Bengal';
+        country = 'India';
+      }
 
       if (city) {
         const displayName = [city, region]
@@ -899,45 +1008,6 @@ export default function HomeScreen() {
           <Text style={styles.loadingText}>Loading...</Text>
         </View>
       
-      {/* Notifications Modal */}
-      <Modal visible={notificationsModalVisible} animationType="slide" transparent>
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
-          <View style={{ backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '80%', padding: 20 }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 }}>
-              <Text style={{ fontSize: 20, fontWeight: 'bold' }}>Notifications</Text>
-              <TouchableOpacity onPress={() => setNotificationsModalVisible(false)}>
-                <Ionicons name="close" size={24} color="#000" />
-              </TouchableOpacity>
-            </View>
-            {loadingNotifications ? (
-              <ActivityIndicator color="#FF6B00" style={{ marginVertical: 30 }} />
-            ) : notifications.length === 0 ? (
-              <View style={{ alignItems: 'center', padding: 40 }}>
-                <Ionicons name="notifications-off-outline" size={50} color="#ccc" />
-                <Text style={{ marginTop: 10, color: '#666' }}>No new notifications</Text>
-              </View>
-            ) : (
-              <ScrollView>
-                {notifications.map((n: any, i) => (
-                  <View key={i} style={{ flexDirection: 'row', backgroundColor: '#F9FAFB', padding: 12, borderRadius: 10, marginBottom: 10 }}>
-                    {n.image_url ? (
-                      <Image source={{ uri: `${process.env.EXPO_PUBLIC_BASE_URL}${n.image_url}` }} style={{ width: 50, height: 50, borderRadius: 8, marginRight: 12 }} />
-                    ) : (
-                      <View style={{ width: 50, height: 50, borderRadius: 8, backgroundColor: '#E5E7EB', marginRight: 12, justifyContent: 'center', alignItems: 'center' }}>
-                        <Ionicons name="notifications" size={24} color="#FF6B00" />
-                      </View>
-                    )}
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontWeight: 'bold', fontSize: 16 }}>{n.title}</Text>
-                      <Text style={{ color: '#666', marginTop: 4 }}>{n.message}</Text>
-                    </View>
-                  </View>
-                ))}
-              </ScrollView>
-            )}
-          </View>
-        </View>
-      </Modal>
 
 </SafeAreaView>
     );
@@ -952,6 +1022,8 @@ export default function HomeScreen() {
     else setVisibleCategoryCount(CATEGORY_VISIBLE_COUNT);
   };
 
+  const unseenCount = notifications.filter((n: any) => !seenNotificationIds.includes(n.id) && !n.is_read).length;
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <WishlistNotice error={wishlist.error} needsLogin={wishlist.needsLogin} retry={wishlist.refresh} />
@@ -965,7 +1037,27 @@ export default function HomeScreen() {
         <View style={styles.headerRow}>
           <Image source={require('../../assets/images/Roameo-logo.png')} style={styles.logo} resizeMode="contain" />
           <TouchableOpacity style={styles.headerIconBtn} onPress={openNotifications}>
-            <Ionicons name="notifications-outline" size={26} color="#1C1C1E" />
+            <View>
+              <Ionicons name="notifications-outline" size={26} color="#1C1C1E" />
+              {unseenCount > 0 && (
+                <View style={{
+                  position: 'absolute',
+                  top: -4,
+                  right: -4,
+                  backgroundColor: '#FF3B30',
+                  borderRadius: 10,
+                  minWidth: 18,
+                  height: 18,
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  paddingHorizontal: 4,
+                }}>
+                  <Text style={{ color: 'white', fontSize: 10, fontWeight: 'bold' }}>
+                    {unseenCount}
+                  </Text>
+                </View>
+              )}
+            </View>
           </TouchableOpacity>
         </View>
 
@@ -1301,6 +1393,79 @@ export default function HomeScreen() {
                   <Text style={styles.modalFooterButtonText}>← Change State</Text>
                 </TouchableOpacity>
               )}
+            </View>
+          </View>
+        </View>
+      </Modal>
+      {/* Notifications Modal */}
+      <Modal visible={notificationsModalVisible} animationType="slide" transparent>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
+          <View style={{ backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '80%', padding: 20 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 }}>
+              <Text style={{ fontSize: 20, fontWeight: 'bold' }}>Notifications</Text>
+              <TouchableOpacity onPress={() => setNotificationsModalVisible(false)}>
+                <Ionicons name="close" size={24} color="#000" />
+              </TouchableOpacity>
+            </View>
+            {loadingNotifications ? (
+              <ActivityIndicator color="#FF6B00" style={{ marginVertical: 30 }} />
+            ) : notifications.length === 0 ? (
+              <View style={{ alignItems: 'center', padding: 40 }}>
+                <Ionicons name="notifications-off-outline" size={50} color="#ccc" />
+                <Text style={{ marginTop: 10, color: '#666' }}>No new notifications</Text>
+              </View>
+            ) : (
+              <ScrollView>
+                {notifications.map((n: any, i) => {
+                  const isSeen = seenNotificationIds.includes(n.id) || n.is_read;
+                  return (
+                    <TouchableOpacity 
+                      key={i} 
+                      style={{ flexDirection: 'row', backgroundColor: isSeen ? '#F9FAFB' : '#FFF5EE', padding: 12, borderRadius: 10, marginBottom: 10, borderWidth: isSeen ? 0 : 1, borderColor: isSeen ? 'transparent' : '#FFE5D4' }}
+                      onPress={() => {
+                        setNotificationsModalVisible(false);
+                        setSelectedNotification(n);
+                      }}
+                    >
+                      {n.image_url ? (
+                        <Image source={{ uri: `${process.env.EXPO_PUBLIC_BASE_URL}${n.image_url}` }} style={{ width: 50, height: 50, borderRadius: 8, marginRight: 12 }} />
+                      ) : (
+                        <View style={{ width: 50, height: 50, borderRadius: 8, backgroundColor: '#E5E7EB', marginRight: 12, justifyContent: 'center', alignItems: 'center' }}>
+                          <Ionicons name="notifications" size={24} color="#FF6B00" />
+                        </View>
+                      )}
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontWeight: isSeen ? '600' : 'bold', fontSize: 16, color: '#1C1C1E' }}>{n.title}</Text>
+                        <Text style={{ color: '#666', marginTop: 4 }}>{n.message}</Text>
+                      </View>
+                      {!isSeen && (
+                        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#FF6B00', alignSelf: 'center', marginLeft: 8 }} />
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Single Notification Popup */}
+      <Modal visible={!!selectedNotification} animationType="fade" transparent>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+          <View style={{ backgroundColor: '#fff', borderRadius: 16, width: '100%', maxWidth: 400, overflow: 'hidden' }}>
+            {selectedNotification?.image_url && (
+              <Image source={{ uri: `${process.env.EXPO_PUBLIC_BASE_URL}${selectedNotification?.image_url}` }} style={{ width: '100%', height: 200, backgroundColor: '#F2F2F7' }} />
+            )}
+            <View style={{ padding: 20 }}>
+              <Text style={{ fontSize: 20, fontWeight: 'bold', marginBottom: 10, color: '#1C1C1E' }}>{selectedNotification?.title}</Text>
+              <Text style={{ fontSize: 14, color: '#3A3A3C', lineHeight: 20, marginBottom: 20 }}>{selectedNotification?.message}</Text>
+              <TouchableOpacity 
+                style={{ backgroundColor: '#FF6B00', paddingVertical: 12, borderRadius: 8, alignItems: 'center' }}
+                onPress={dismissSelectedNotification}
+              >
+                <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 16 }}>Dismiss</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </View>

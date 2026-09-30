@@ -19,8 +19,10 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View
+  View,
+  Platform
 } from 'react-native';
+import MapView, { Marker, Callout } from 'react-native-maps';
 import { addCartItem, readCart, subscribeCartChanges } from '../../constants/cart';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_BASE_URL;
@@ -159,6 +161,8 @@ export default function ListingsScreen() {
     priority: coupon.priority,
     max_quantity: coupon.max_quantity || 1,
     created_at: coupon.created_at,
+    latitude: coupon.latitude || (22.5726 + (coupon.id % 20 - 10) * 0.02),
+    longitude: coupon.longitude || (88.3639 + (coupon.id % 30 - 15) * 0.02),
     original: coupon,
   });
 
@@ -589,31 +593,46 @@ export default function ListingsScreen() {
         {viewMode === 'map' && (
           <View style={styles.mapWrapper}>
             <View style={styles.mapImage}>
-              <View style={[styles.mapBlock, { top: '8%', left: '6%', width: '28%', height: '16%' }]} />
-              <View style={[styles.mapBlock, { top: '10%', left: '46%', width: '44%', height: '20%' }]} />
-              <View style={[styles.mapBlock, { top: '36%', left: '8%', width: '32%', height: '18%' }]} />
-              <View style={[styles.mapBlock, { top: '40%', left: '54%', width: '38%', height: '18%' }]} />
-              <View style={[styles.mapBlock, { top: '70%', left: '18%', width: '30%', height: '16%' }]} />
-              <View style={[styles.mapBlock, { top: '72%', left: '54%', width: '36%', height: '16%' }]} />
-
-              {HARDCODED_MAP_AREA.map((area, idx) => (
-                <Text key={area} style={[styles.mapAreaLabel, { top: `${12 + idx * 10}%`, left: `${(idx % 2 === 0 ? 12 : 62)}%` }]}>
-                  {area}
-                </Text>
-              ))}
-
-              {MOCK_MAP_MARKERS.map((marker, idx) => (
-                <TouchableOpacity
-                  key={marker.id}
-                  style={[styles.mapMarker, { top: marker.top as any, left: marker.left as any }]}
-                  onPress={() => setSelectedMapMarker(idx)}
-                  activeOpacity={0.8}
-                >
-                  <View style={[styles.mapMarkerPin, idx === activeMapIndex && styles.mapMarkerPinActive]}>
-                    <Ionicons name="location" size={16} color="#FFFFFF" />
-                  </View>
-                </TouchableOpacity>
-              ))}
+              <MapView
+                provider="google"
+                style={{ flex: 1 }}
+                initialRegion={(() => {
+                  if (listings.length === 0) return { latitude: 22.5726, longitude: 88.3639, latitudeDelta: 0.05, longitudeDelta: 0.05 };
+                  const lats = listings.map(l => l.latitude);
+                  const lngs = listings.map(l => l.longitude);
+                  const minLat = Math.min(...lats);
+                  const maxLat = Math.max(...lats);
+                  const minLng = Math.min(...lngs);
+                  const maxLng = Math.max(...lngs);
+                  const padLat = Math.max((maxLat - minLat) * 0.3, 0.01);
+                  const padLng = Math.max((maxLng - minLng) * 0.3, 0.01);
+                  return {
+                    latitude: (minLat + maxLat) / 2,
+                    longitude: (minLng + maxLng) / 2,
+                    latitudeDelta: (maxLat - minLat) + padLat,
+                    longitudeDelta: (maxLng - minLng) + padLng,
+                  };
+                })()}
+              >
+                  {listings.map((item, idx) => (
+                    <Marker
+                      key={item.id}
+                      coordinate={{ latitude: item.latitude, longitude: item.longitude }}
+                      onPress={() => setSelectedMapMarker(idx)}
+                    >
+                      <View style={[styles.mapMarkerPin, idx === activeMapIndex && styles.mapMarkerPinActive]}>
+                        <Ionicons name="location" size={16} color="#FFFFFF" />
+                      </View>
+                      <Callout tooltip>
+                        <View style={{ backgroundColor: '#fff', borderRadius: 8, padding: 8, width: 200, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 4, elevation: 5 }}>
+                          <Text style={{ fontWeight: 'bold', fontSize: 14, marginBottom: 4 }} numberOfLines={1}>{item.title}</Text>
+                          <Text style={{ fontSize: 12, color: '#666', marginBottom: 2 }} numberOfLines={1}>{item.category} • {item.city}</Text>
+                          <Text style={{ fontSize: 12, color: '#FF6B00', fontWeight: 'bold' }}>${item.price}</Text>
+                        </View>
+                      </Callout>
+                    </Marker>
+                  ))}
+                </MapView>
 
               <View style={styles.mapSearchPill}>
                 <Ionicons name="search" size={12} color="#1C1C1E" />

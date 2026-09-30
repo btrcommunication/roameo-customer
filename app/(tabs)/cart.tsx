@@ -16,7 +16,8 @@ import {
 } from 'react-native';
 import { CartItem as DemoCartItem, readCart, setCartQuantity, removeCartItem, clearSavedCart, isDemoSession, subscribeCartChanges } from '../../constants/cart';
 
-import { Order, placeOrder } from '../../constants/orders';
+import { Order, placeOrder, createPaymentIntent, confirmPaymentOrder } from '../../constants/orders';
+import { openStripeCheckout } from '../../constants/stripeCheckout';
 
 export default function CartScreen() {
   const router = useRouter();
@@ -24,8 +25,14 @@ export default function CartScreen() {
   const [clearModalVisible, setClearModalVisible] = useState(false);
   const [clearingCart, setClearingCart] = useState(false);
   const clearingCartRef = useRef(false);
-  const params = useLocalSearchParams<{ checkout?: string }>();
+  const params = useLocalSearchParams<{
+    checkout?: string;
+    payment?: string;
+    session_id?: string;
+    request_id?: string;
+  }>();
   const handledCheckout = useRef<string | undefined>(undefined);
+  const handledPayment = useRef<string | undefined>(undefined);
   const [cartItems, setCartItems] = useState<DemoCartItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -41,7 +48,7 @@ export default function CartScreen() {
 
   useFocusEffect(useCallback(() => {
     fetchCart();
-  }, [params.checkout]));
+  }, [params.checkout, params.payment, params.session_id, params.request_id]));
 
   useEffect(() => subscribeCartChanges(() => {
     readCart().then(applyCart).catch(error => {
@@ -58,6 +65,33 @@ export default function CartScreen() {
   const fetchCart = async () => {
     try {
       setLoading(true);
+
+      // Handle Stripe web redirect success
+      if (params.payment === 'success' && (params.session_id || params.request_id)) {
+        const paymentKey = `${params.payment}_${params.session_id || ''}_${params.request_id || ''}`;
+        if (handledPayment.current !== paymentKey) {
+          handledPayment.current = paymentKey;
+          router.setParams({ payment: undefined, session_id: undefined, request_id: undefined });
+          setPaymentLoading(true);
+          try {
+            const order = await confirmPaymentOrder({
+              session_id: params.session_id,
+              request_id: params.request_id || `stripe-${params.session_id}`,
+            });
+            applyCart([]);
+            setCheckoutModalVisible(false);
+            setPaymentMessage('');
+            setPlacedOrder(order);
+          } catch (paymentErr) {
+            console.error('Payment confirmation error:', paymentErr);
+            Alert.alert('Payment Confirmation', paymentErr instanceof Error ? paymentErr.message : 'Unable to confirm payment.');
+          } finally {
+            setPaymentLoading(false);
+          }
+          return;
+        }
+      }
+
       const items = await readCart();
       applyCart(items);
       if (params.checkout && handledCheckout.current !== params.checkout) {
@@ -157,14 +191,55 @@ export default function CartScreen() {
     setPaymentMessage('');
     checkoutRequest.current ??= `checkout-${Date.now()}-${Math.random().toString(36).slice(2, 14)}`;
     try {
-      const order = await placeOrder(checkoutRequest.current);
+      if (demoCheckout) {
+        const order = await placeOrder(checkoutRequest.current);
+        applyCart([]);
+        setCheckoutModalVisible(false);
+        setPaymentMessage('');
+        setPlacedOrder(order);
+        checkoutRequest.current = null;
+        return;
+      }
+
+      // 1. Initialize Payment with backend
+      const paymentData = await createPaymentIntent(checkoutRequest.current);
+      const publishableKey = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || '';
+
+      // 2. Present Stripe Checkout / Payment Sheet
+      const result = await openStripeCheckout({
+        publishableKey,
+        clientSecret: paymentData.clientSecret,
+        checkoutUrl: paymentData.checkoutUrl,
+      });
+
+      if (result.error) {
+        if (result.error.code === 'Canceled') {
+          setPaymentMessage('Payment was canceled.');
+        } else {
+          setPaymentMessage(result.error.message || 'Payment could not be processed.');
+        }
+        return;
+      }
+
+      if (result.redirected) {
+        setCheckoutModalVisible(false);
+        return;
+      }
+
+      // 3. Confirm order & verify payment on server
+      const order = await confirmPaymentOrder({
+        payment_intent_id: paymentData.paymentIntentId,
+        request_id: checkoutRequest.current,
+      });
+
       applyCart([]);
       setCheckoutModalVisible(false);
       setPaymentMessage('');
       setPlacedOrder(order);
       checkoutRequest.current = null;
     } catch (error) {
-      setPaymentMessage(error instanceof Error ? error.message : 'Unable to place your order. Please try again.');
+      console.error('Checkout error:', error);
+      setPaymentMessage(error instanceof Error ? error.message : 'Unable to complete your order. Please try again.');
     } finally {
       savingCheckout.current = false;
       setPaymentLoading(false);
@@ -396,9 +471,9 @@ export default function CartScreen() {
                     <View style={styles.stripeInfo}>
                       <Ionicons name="shield-checkmark" size={22} color="#635BFF" />
                       <View style={styles.paymentCopy}>
-                        <Text style={styles.paymentTitle}>Place order</Text>
+                        <Text style={styles.paymentTitle}>Secure Stripe Payment</Text>
                         <Text style={styles.paymentSubtitle}>
-                          Review your coupons and place your order.
+                          {demoCheckout ? 'Demo mode checkout.' : 'Pay securely with card using Stripe.'}
                         </Text>
                       </View>
                     </View>
@@ -416,15 +491,15 @@ export default function CartScreen() {
                       onPress={submitOrder}
                       disabled={paymentLoading}
                     >
-                      {paymentLoading ? <ActivityIndicator color="#FFF" /> : <Ionicons name="lock-closed" size={16} color="#FFF" />}
+                      {paymentLoading ? <ActivityIndicator color="#FFF" /> : <Ionicons name="card" size={16} color="#FFF" />}
                       <Text style={styles.confirmButtonText}>
-                        {paymentLoading ? 'Placing order...' : 'Place order'}
+                        {paymentLoading ? 'Processing...' : (demoCheckout ? 'Place order' : `Pay $${totalAmount.toFixed(2)}`)}
                       </Text>
                     </TouchableOpacity>
 
                     <View style={styles.demoNotice}>
                       <Text style={styles.demoNoticeText}>
-                        {demoCheckout ? 'Demo mode. No real charges will be made.' : 'Payment is pending. Your cart will clear after your order is placed.'}
+                        {demoCheckout ? 'Demo mode. No real charges will be made.' : 'Stripe Test Mode. Your card will be processed in test mode.'}
                       </Text>
                     </View>
               </View>

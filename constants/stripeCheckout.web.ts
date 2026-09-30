@@ -1,6 +1,7 @@
 interface CheckoutParams {
   publishableKey: string;
   checkoutUrl?: string;
+  clientSecret?: string;
 }
 
 export const openStripeCheckout = async ({ checkoutUrl }: CheckoutParams) => {

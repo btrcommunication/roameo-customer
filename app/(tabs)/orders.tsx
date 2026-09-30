@@ -29,7 +29,9 @@ const statusLabel = (order: Order) =>
 const money = (amount: number, currency: string) =>
   currency === 'USD' ? `$${amount.toFixed(2)}` : `${currency} ${amount.toFixed(2)}`;
 const paymentLabel = (order: Order) =>
-  order.payment_status === 'demo' ? 'Demo order' : `Payment ${order.payment_status || 'pending'}`;
+  order.payment_status === 'demo' ? 'Demo order'
+  : order.payment_status === 'paid' ? (order.payment_method ? `Paid (${order.payment_method})` : 'Paid')
+  : `Payment ${order.payment_status || 'pending'}`;
 
 // Same wide + short image proportions as the listings screen
 const IMAGE_WIDTH = 110;
@@ -449,6 +451,29 @@ export default function OrdersScreen() {
                   <Text style={styles.modalTotalValue}>
                     {money(selectedOrder.total_amount, selectedOrder.currency)}
                   </Text>
+                </View>
+
+                {/* Payment Information */}
+                <View style={{ marginTop: 16, padding: 14, backgroundColor: selectedOrder.payment_status === 'paid' ? '#F0FDF4' : '#FEF3C7', borderRadius: 12, borderWidth: 1, borderColor: selectedOrder.payment_status === 'paid' ? '#BBF7D0' : '#FDE68A' }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+                    <Ionicons name="card" size={16} color={selectedOrder.payment_status === 'paid' ? '#15803D' : '#92400E'} />
+                    <Text style={{ fontWeight: '700', fontSize: 14, color: selectedOrder.payment_status === 'paid' ? '#15803D' : '#92400E', marginLeft: 6 }}>
+                      Payment Information
+                    </Text>
+                  </View>
+                  <Text style={{ fontSize: 13, color: '#374151', marginBottom: 2 }}>
+                    Status: <Text style={{ fontWeight: '700', color: selectedOrder.payment_status === 'paid' ? '#16A34A' : '#D97706' }}>{selectedOrder.payment_status.toUpperCase()}</Text>
+                  </Text>
+                  {selectedOrder.payment_method && (
+                    <Text style={{ fontSize: 13, color: '#374151', marginBottom: 2 }}>
+                      Method: <Text style={{ fontWeight: '600' }}>{selectedOrder.payment_method} {selectedOrder.payment_details?.card_last4 ? `(•••• ${selectedOrder.payment_details.card_last4})` : ''}</Text>
+                    </Text>
+                  )}
+                  {selectedOrder.transaction_id && (
+                    <Text selectable style={{ fontSize: 12, color: '#6B7280', marginTop: 4 }}>
+                      Transaction ID: {selectedOrder.transaction_id}
+                    </Text>
+                  )}
                 </View>
 
                 {/* Report Issue Section */}

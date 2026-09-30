@@ -6,9 +6,27 @@ export type OrderItem = {
   coupon_id: number; title: string; quantity: number; price: number;
   subtotal: number; thumbnail_url?: string; redemption_codes?: string[];
 };
+export type PaymentDetails = {
+  provider?: string;
+  session_id?: string;
+  payment_intent_id?: string;
+  payment_method_type?: string;
+  card_brand?: string;
+  card_last4?: string;
+  customer_email?: string;
+  customer_name?: string;
+  receipt_url?: string;
+  amount_total?: number;
+  currency?: string;
+  status?: string;
+  timestamp?: string;
+};
+
 export type Order = {
   id: string; items: OrderItem[]; total_items: number; total_amount: number;
-  currency: string; status: string; payment_status: string; created_at: string;
+  currency: string; status: string; payment_status: string;
+  payment_method?: string; transaction_id?: string; payment_details?: PaymentDetails;
+  created_at: string;
 };
 const DEMO_ORDERS_KEY = 'roameoDemoPlacedOrders';
 const listeners = new Set<() => void>();
@@ -18,12 +36,25 @@ export function subscribeOrders(listener: () => void) {
 }
 function normalizeOrder(value: Order): Order {
   if (!value?.id || !Array.isArray(value.items) || !value.created_at) throw new Error('Invalid order response.');
-  return { ...value, id: String(value.id), total_amount: Number(value.total_amount), total_items: Number(value.total_items),
-    items: value.items.map(item => ({ ...item, quantity: Number(item.quantity), price: Number(item.price),
-      subtotal: Number(item.subtotal), thumbnail_url: couponImageUrl(item.thumbnail_url),
+  return {
+    ...value,
+    id: String(value.id),
+    total_amount: Number(value.total_amount),
+    total_items: Number(value.total_items),
+    payment_method: value.payment_method || (value.payment_status === 'paid' ? 'Stripe Card' : undefined),
+    transaction_id: value.transaction_id || undefined,
+    payment_details: typeof value.payment_details === 'string' ? JSON.parse(value.payment_details) : value.payment_details,
+    items: value.items.map(item => ({
+      ...item,
+      quantity: Number(item.quantity),
+      price: Number(item.price),
+      subtotal: Number(item.subtotal),
+      thumbnail_url: couponImageUrl(item.thumbnail_url),
       redemption_codes: Array.isArray(item.redemption_codes)
         ? item.redemption_codes.filter((code): code is string => typeof code === 'string' && !!code.trim())
-        : [] })) };
+        : []
+    }))
+  };
 }
 export async function readOrders(): Promise<Order[]> {
   const orders = await isDemoSession()
@@ -65,6 +96,49 @@ export async function placeOrder(requestId: string): Promise<Order> {
     order = normalizeOrder((await cartRequest('POST', '/checkout', { request_id: requestId })).data);
     if (order.status !== 'placed') throw new Error('The server did not confirm this order. Please refresh your orders.');
   }
+  listeners.forEach(listener => listener());
+  return order;
+}
+
+export async function createPaymentIntent(requestId: string): Promise<{
+  clientSecret: string;
+  paymentIntentId: string;
+  checkoutUrl?: string;
+  amount: number;
+  currency: string;
+}> {
+  const token = await AsyncStorage.getItem('userToken');
+  if (!token || token === 'demo-token') {
+    throw new Error('Please log in to make a payment.');
+  }
+  const response = await fetch(`${process.env.EXPO_PUBLIC_BASE_URL}/api/payment/create-payment-intent`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ request_id: requestId }),
+  });
+  const data = await response.json().catch(() => null);
+  if (!response.ok || data?.status !== 'success') {
+    throw new Error(data?.message || `Payment initialization failed (${response.status}).`);
+  }
+  return data.data;
+}
+
+export async function confirmPaymentOrder(params: { payment_intent_id?: string; session_id?: string; request_id: string }): Promise<Order> {
+  const token = await AsyncStorage.getItem('userToken');
+  if (!token || token === 'demo-token') {
+    throw new Error('Please log in to complete your order.');
+  }
+  const response = await fetch(`${process.env.EXPO_PUBLIC_BASE_URL}/api/payment/confirm-order`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(params),
+  });
+  const data = await response.json().catch(() => null);
+  if (!response.ok || data?.status !== 'success') {
+    throw new Error(data?.message || `Order confirmation failed (${response.status}).`);
+  }
+  const order = normalizeOrder(data.data);
+  await clearSavedCart();
   listeners.forEach(listener => listener());
   return order;
 }
