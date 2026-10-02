@@ -82,7 +82,7 @@ export async function readCart(): Promise<CartItem[]> {
 
 export { request as cartRequest };
 
-export async function addCartItem(coupon: any) {
+export async function addCartItem(coupon: any, ad_id?: number) {
   const vendorName = coupon.vendor_name || coupon.original?.vendor_name;
   if (validVendor(vendorName)) {
     vendorNames.set(Number(coupon.id), vendorName);
@@ -100,7 +100,7 @@ export async function addCartItem(coupon: any) {
   if (!Number.isSafeInteger(couponId) || couponId <= 0) {
     throw new Error('Invalid coupon ID.');
   }
-  await request('POST', '', { coupon_id: couponId, quantity: 1 });
+  await request('POST', '', { coupon_id: couponId, quantity: 1, ad_id });
   return true;
 }
 

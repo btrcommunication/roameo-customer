@@ -126,7 +126,7 @@ export default function ProfileScreen() {
       setIsLoggedIn(false);
       setUserData(null);
       setToken(null);
-      Alert.alert('Logged Out', 'You have been logged out successfully.');
+      router.replace('/auth');
     } catch (error) {
       console.error('Logout error:', error);
     }
@@ -330,12 +330,8 @@ export default function ProfileScreen() {
           <Text style={styles.headerTitleText}>Profile</Text>
           
           <View style={styles.rightHeaderControls}>
-            <TouchableOpacity style={styles.iconHeaderButton}>
-              <Ionicons name="notifications-outline" size={24} color="#1C1C1E" />
-              <View style={styles.orangeAlertDot} />
-            </TouchableOpacity>
             <TouchableOpacity 
-              style={[styles.iconHeaderButton, { marginLeft: 16 }]}
+              style={styles.iconHeaderButton}
               onPress={navigateToLogin}
             >
               <Ionicons name="log-in-outline" size={24} color="#FF6B00" />
@@ -343,105 +339,46 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        <ScrollView style={styles.container} contentContainerStyle={styles.notLoggedInContainer}>
-          {/* Profile Meta Container - Placeholder */}
-          <View style={styles.profileMetaContainer}>
-            <View style={styles.profileFlexRow}>
-              <View style={styles.avatarWrapper}>
-                <View style={[styles.avatarImage, styles.placeholderImage]} />
-                <View style={styles.cameraIconBadge}>
-                  <Ionicons name="camera" size={12} color="#FFFFFF" />
-                </View>
+        <ScrollView style={styles.container} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+          <View style={styles.guestCardContainer}>
+            <View style={styles.guestAvatarContainer}>
+              <Ionicons name="person-circle-outline" size={80} color="#FF6B00" />
+            </View>
+            <Text style={styles.guestWelcomeTitle}>Welcome to Roameo</Text>
+            <Text style={styles.guestWelcomeSubtitle}>
+              Sign in to manage your bookings, wishlist, orders, and exclusive rewards.
+            </Text>
+
+            <TouchableOpacity style={styles.loginButtonLarge} onPress={navigateToLogin}>
+              <Ionicons name="log-in-outline" size={22} color="#FFFFFF" style={{ marginRight: 8 }} />
+              <Text style={styles.loginButtonLargeText}>Sign In / Register</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Quick Perks Overview */}
+          <View style={styles.guestPerksContainer}>
+            <View style={styles.guestPerkItem}>
+              <Ionicons name="pricetag-outline" size={20} color="#FF6B00" />
+              <View style={{ marginLeft: 12, flex: 1 }}>
+                <Text style={styles.guestPerkTitle}>Exclusive Coupons</Text>
+                <Text style={styles.guestPerkDesc}>Unlock deals and vendor discounts</Text>
               </View>
-              
-              <View style={styles.identityDetails}>
-                <View style={styles.nameBadgeRow}>
-                  <View style={[styles.placeholderText, { width: 120, height: 28 }]} />
-                  <View style={[styles.placeholderText, { width: 60, height: 20, marginLeft: 8, borderRadius: 6 }]} />
-                </View>
-                <View style={[styles.placeholderText, { width: 80, height: 16, marginTop: 4 }]} />
-                
-                <View style={styles.locationMetaRow}>
-                  <Ionicons name="location-outline" size={14} color="#8E8E93" />
-                  <View style={[styles.placeholderText, { width: 100, height: 14, marginLeft: 4 }]} />
-                </View>
-                <View style={styles.calendarMetaRow}>
-                  <Ionicons name="calendar-outline" size={13} color="#8E8E93" />
-                  <View style={[styles.placeholderText, { width: 120, height: 12, marginLeft: 4 }]} />
-                </View>
+            </View>
+            <View style={styles.guestPerkItem}>
+              <Ionicons name="heart-outline" size={20} color="#FF6B00" />
+              <View style={{ marginLeft: 12, flex: 1 }}>
+                <Text style={styles.guestPerkTitle}>Wishlist Sync</Text>
+                <Text style={styles.guestPerkDesc}>Save listings to access anywhere</Text>
+              </View>
+            </View>
+            <View style={styles.guestPerkItem}>
+              <Ionicons name="gift-outline" size={20} color="#FF6B00" />
+              <View style={{ marginLeft: 12, flex: 1 }}>
+                <Text style={styles.guestPerkTitle}>Reward Points</Text>
+                <Text style={styles.guestPerkDesc}>Earn points on every booking</Text>
               </View>
             </View>
           </View>
-
-          {/* Stats Strip - Placeholder */}
-          <View style={styles.statsStripContainer}>
-            {[1, 2, 3, 4].map((item) => (
-              <View key={item} style={styles.statModuleCard}>
-                <View style={[styles.statIconContainer, { backgroundColor: '#F2F2F7' }]} />
-                <View style={[styles.placeholderText, { width: 30, height: 20, marginTop: 4 }]} />
-                <View style={[styles.placeholderText, { width: 40, height: 12, marginTop: 4 }]} />
-                <View style={[styles.placeholderText, { width: 35, height: 10, marginTop: 2 }]} />
-              </View>
-            ))}
-          </View>
-
-          {/* Premium Banner - Placeholder */}
-          <View style={styles.premiumBannerWrapper}>
-            <View style={[styles.premiumBadgeIconBox, { backgroundColor: '#E5E5EA' }]} />
-            <View style={styles.premiumTextContent}>
-              <View style={[styles.placeholderText, { width: '80%', height: 16 }]} />
-              <View style={[styles.placeholderText, { width: '60%', height: 12, marginTop: 4 }]} />
-            </View>
-            <View style={[styles.placeholderText, { width: 60, height: 20 }]} />
-          </View>
-
-          {/* Activity Block - Placeholder */}
-          <View style={styles.activityBlockSection}>
-            <View style={styles.sectionHeaderContainer}>
-              <Text style={styles.sectionTitleText}>My Activity</Text>
-              <Text style={styles.sectionViewAllText}>View All</Text>
-            </View>
-            
-            <View style={styles.activityGridWrapper}>
-              {[1, 2, 3, 4].map((item) => (
-                <View key={item} style={styles.activityIndividualCell}>
-                  <View style={styles.activityIconWrapperCircle}>
-                    <Ionicons name="calendar-outline" size={18} color="#C7C7CC" />
-                  </View>
-                  <View style={[styles.placeholderText, { width: 25, height: 18 }]} />
-                  <View style={[styles.placeholderText, { width: 40, height: 10, marginTop: 2 }]} />
-                </View>
-              ))}
-            </View>
-          </View>
-
-          {/* Settings Menu - Placeholder */}
-          <View style={styles.menuItemsFormBlock}>
-            {menuItems.map((item, index) => (
-              <View key={index} style={styles.menuItemRowContainer}>
-                <View style={styles.menuItemLeftNodeWrapper}>
-                  <View style={styles.menuItemIconBoxFrame}>
-                    <Ionicons name={item.icon as any} size={20} color="#C7C7CC" />
-                  </View>
-                  <View style={styles.menuItemTextStack}>
-                    <View style={[styles.placeholderText, { width: '70%', height: 14 }]} />
-                    <View style={[styles.placeholderText, { width: '50%', height: 10, marginTop: 4 }]} />
-                  </View>
-                </View>
-                <Ionicons name="chevron-forward" size={16} color="#C7C7CC" />
-              </View>
-            ))}
-          </View>
-
-          {/* Login Button at bottom */}
-          <TouchableOpacity style={styles.loginButtonLarge} onPress={navigateToLogin}>
-            <Ionicons name="log-in-outline" size={24} color="#FFFFFF" style={{ marginRight: 8 }} />
-            <Text style={styles.loginButtonLargeText}>Login to your account</Text>
-          </TouchableOpacity>
-          
-          <Text style={styles.loginHelperText}>
-            Don't have an account? Sign up on the login page
-          </Text>
         </ScrollView>
       </SafeAreaView>
     );
@@ -1289,5 +1226,54 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#3A3A3C',
     lineHeight: 18,
+  },
+  guestCardContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 24,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#F2F2F7',
+    marginBottom: 20,
+  },
+  guestAvatarContainer: {
+    marginBottom: 12,
+  },
+  guestWelcomeTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1C1C1E',
+    marginBottom: 6,
+  },
+  guestWelcomeSubtitle: {
+    fontSize: 14,
+    color: '#8E8E93',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 20,
+  },
+  guestPerksContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#F2F2F7',
+  },
+  guestPerkItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F9FAFB',
+  },
+  guestPerkTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1C1C1E',
+  },
+  guestPerkDesc: {
+    fontSize: 12,
+    color: '#8E8E93',
+    marginTop: 2,
   },
 });

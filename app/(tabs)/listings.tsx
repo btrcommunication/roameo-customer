@@ -6,7 +6,7 @@ import { useWishlist } from '../../hooks/useWishlist';
 import { FontAwesome5, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Dimensions,
@@ -26,7 +26,7 @@ import MapView, { Marker, Callout } from 'react-native-maps';
 import { addCartItem, readCart, subscribeCartChanges } from '../../constants/cart';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_BASE_URL;
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 
 const HARDCODED_DISCOUNTS = ['20% OFF', '15% OFF', '15% OFF', '10% OFF', '10% OFF', '25% OFF', '30% OFF', '5% OFF'];
 const HARDCODED_RATINGS = [
@@ -52,25 +52,36 @@ const PRICE_RANGES = [
   { label: '$1000+', min: 1000, max: Infinity },
 ];
 
-const MOCK_MAP_MARKERS = [
-  { id: 1, top: '18%', left: '28%' },
-  { id: 2, top: '30%', left: '62%' },
-  { id: 3, top: '46%', left: '22%' },
-  { id: 4, top: '58%', left: '72%' },
-  { id: 5, top: '38%', left: '46%' },
-  { id: 6, top: '66%', left: '40%' },
-  { id: 7, top: '24%', left: '50%' },
-  { id: 8, top: '52%', left: '58%' },
+const SORT_OPTIONS = [
+  { label: 'Default', value: 'Default' },
+  { label: 'Newest', value: 'Newest' },
+  { label: 'Price: Low to High', value: 'Price Low-High' },
+  { label: 'Price: High to Low', value: 'Price High-Low' },
+  { label: 'Customer Rating: High to Low', value: 'Rating High-Low' },
+  { label: 'Title: A to Z', value: 'Title A-Z' },
 ];
 
-// KEY LAYOUT VALUES:
-// Image: ~38% of screen width, but SHORT height (~92px) so it looks like the screenshot
+const RATING_OPTIONS = [
+  { label: 'All Ratings', value: 'All' },
+  { label: '4.5 ★ & above', value: '4.5+' },
+  { label: '4.0 ★ & above', value: '4.0+' },
+  { label: '3.5 ★ & above', value: '3.5+' },
+  { label: '3.0 ★ & above', value: '3.0+' },
+];
+
 const LIST_IMAGE_WIDTH = Math.round(width * 0.38);
 const LIST_IMAGE_HEIGHT = 92;
 
 export default function ListingsScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ search?: string; category?: string }>();
+  const params = useLocalSearchParams<{
+    search?: string;
+    category?: string;
+    category_id?: string;
+    category_ids?: string;
+    coupon_ids?: string;
+    vendor_id?: string;
+  }>();
   const wishlist = useWishlist();
   const [cartMessage, setCartMessage] = useState('');
   const addingRef = useRef(false);
@@ -82,19 +93,28 @@ export default function ListingsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Filter States
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [selectedCategoryId, setSelectedCategoryId] = useState<number>(0);
+  const [selectedCategoryIds, setSelectedCategoryIds] = useState<number[]>([]);
+  const [selectedVendors, setSelectedVendors] = useState<number[]>([]);
+  const [selectedCouponIds, setSelectedCouponIds] = useState<number[]>([]);
+  const [selectedLocation, setSelectedLocation] = useState<string>('All');
+  const [selectedRating, setSelectedRating] = useState<string>('All');
+  const [selectedPriceRange, setSelectedPriceRange] = useState<string>('All');
   const [sortBy, setSortBy] = useState('Default');
-  const [filterPanel, setFilterPanel] = useState<string | null>(null);
   const [featuredOnly, setFeaturedOnly] = useState(false);
+
+  // E-Commerce Filter Modal state
+  const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
+  const [activeFilterTab, setActiveFilterTab] = useState<'sort' | 'price' | 'vendor' | 'category' | 'rating' | 'location'>('sort');
+  const [vendorSearch, setVendorSearch] = useState('');
+
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [cartItems, setCartItems] = useState<Set<number>>(new Set());
   const [addingToCart, setAddingToCart] = useState<number | null>(null);
-  const [selectedLocation, setSelectedLocation] = useState<string>('All');
-  const [selectedActivity, setSelectedActivity] = useState<string>('All');
-  const [selectedRating, setSelectedRating] = useState<string>('All');
-  const [selectedPriceRange, setSelectedPriceRange] = useState<string>('All');
   const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
   const [visibleCategoryCount, setVisibleCategoryCount] = useState(CATEGORY_VISIBLE_COUNT);
   const [selectedMapMarker, setSelectedMapMarker] = useState<number | null>(null);
@@ -167,66 +187,172 @@ export default function ListingsScreen() {
   });
 
   const locations: string[] = ['All', ...new Set<string>(allListings.map(item => item.city).filter(Boolean))].sort();
-  const activityNames = ['Activities', 'Outdoor', 'Water Sports', 'Fitness', 'Yoga', 'Spa & Wellness', 'Massage'];
-  const activities: string[] = ['All', ...new Set<string>(
-    allListings
-      .map(item => item.category)
-      .filter((cat): cat is string => Boolean(cat) && activityNames.some(a => a.toLowerCase() === cat.toLowerCase()))
-  )].sort();
 
+  // Dynamic Vendors (Brands) list
+  const vendorsList = Array.from(
+    new Map(
+      allListings
+        .filter(item => item.vendor_id && item.vendor_name)
+        .map(item => [Number(item.vendor_id), { id: Number(item.vendor_id), name: String(item.vendor_name) }])
+    ).values()
+  ).sort((a, b) => a.name.localeCompare(b.name));
+
+  // Handle URL Params
   useEffect(() => {
-    setSearchQuery(params.search || '');
-    setShowSearchResults(Boolean(params.search));
+    if (params.search !== undefined) {
+      setSearchQuery(params.search || '');
+      setShowSearchResults(Boolean(params.search));
+    }
   }, [params.search]);
 
   useEffect(() => {
-    const category = allListings.find(item => item.category === params.category);
-    setSelectedCategory(params.category || 'All');
-    setSelectedCategoryId(category ? Number(category.category_id) : 0);
-  }, [params.category, allListings]);
+    if (params.vendor_id) {
+      const vId = Number(params.vendor_id);
+      if (!isNaN(vId) && vId > 0) {
+        setSelectedVendors([vId]);
+      }
+    }
+    if (params.coupon_ids) {
+      const cIds = params.coupon_ids.split(',').map(Number).filter(n => !isNaN(n) && n > 0);
+      if (cIds.length > 0) setSelectedCouponIds(cIds);
+    }
+    if (params.category_ids) {
+      const catIds = params.category_ids.split(',').map(Number).filter(n => !isNaN(n) && n > 0);
+      if (catIds.length > 0) {
+        setSelectedCategoryIds(catIds);
+        setSelectedCategoryId(catIds[0]);
+      }
+    } else if (params.category_id) {
+      const catId = Number(params.category_id);
+      if (!isNaN(catId) && catId > 0) {
+        setSelectedCategoryIds([catId]);
+        setSelectedCategoryId(catId);
+      }
+    } else if (params.category && allListings.length > 0) {
+      const found = allListings.find(item => String(item.category).toLowerCase() === String(params.category).toLowerCase());
+      if (found && found.category_id) {
+        setSelectedCategoryIds([Number(found.category_id)]);
+        setSelectedCategoryId(Number(found.category_id));
+        setSelectedCategory(params.category);
+      }
+    }
+  }, [params.vendor_id, params.coupon_ids, params.category_ids, params.category_id, params.category, allListings.length]);
 
-  const hasFeatured = allListings.some(item => Number(item.priority) > 0);
-
-  const filterOptions = [
-    { label: 'Sort By', value: sortBy, icon: 'chevron-down' },
-    { label: 'Price', value: selectedPriceRange === 'All' ? 'All' : selectedPriceRange, icon: 'chevron-down' },
-    ...(activities.length > 1 ? [{ label: 'Activities', value: selectedActivity === 'All' ? 'All' : selectedActivity, icon: 'chevron-down' }] : []),
-    ...(locations.length > 1 ? [{ label: 'Location', value: selectedLocation === 'All' ? 'All' : selectedLocation, icon: 'chevron-down' }] : []),
-    { label: 'Rating', value: selectedRating === 'All' ? 'All' : selectedRating, icon: 'chevron-down' },
-    { label: 'More Filters', value: featuredOnly ? 'Featured' : '', icon: 'chevron-down' },
-  ];
-
+  // Main Filter Pipeline
   useEffect(() => {
     const query = searchQuery.trim().toLowerCase();
     const priceRange = PRICE_RANGES.find(p => p.label === selectedPriceRange) || PRICE_RANGES[0];
-    const filtered = allListings.filter(item =>
-      (!selectedCategoryId || Number(item.category_id) === Number(selectedCategoryId)) &&
-      (!featuredOnly || Number(item.priority) > 0) &&
-      (selectedActivity === 'All' || item.category === selectedActivity) &&
-      (selectedLocation === 'All' || item.city === selectedLocation) &&
-      (selectedRating === 'All' || (HARDCODED_RATINGS[Number(item.id) % HARDCODED_RATINGS.length].rating >= Number(selectedRating.replace('+', '')))) &&
-      ((Number(item.price) || 0) >= priceRange.min && (Number(item.price) || 0) <= priceRange.max) &&
-      (!query || [item.title, item.vendor_name, item.category, item.type, item.description, item.coupon_code]
-        .some(value => String(value || '').toLowerCase().includes(query)))
-    );
+
+    const filtered = allListings.filter(item => {
+      // Category filter (multi-select or single)
+      if (selectedCategoryIds.length > 0) {
+        if (!selectedCategoryIds.includes(Number(item.category_id))) return false;
+      } else if (selectedCategoryId > 0 && Number(item.category_id) !== Number(selectedCategoryId)) {
+        return false;
+      }
+
+      // Vendor / Brand filter (multi-select)
+      if (selectedVendors.length > 0 && !selectedVendors.includes(Number(item.vendor_id))) {
+        return false;
+      }
+
+      // Targeted Coupon IDs
+      if (selectedCouponIds.length > 0 && !selectedCouponIds.includes(Number(item.id))) {
+        return false;
+      }
+
+      // Featured only
+      if (featuredOnly && Number(item.priority) <= 0) {
+        return false;
+      }
+
+      // Location / City
+      if (selectedLocation !== 'All' && item.city !== selectedLocation) {
+        return false;
+      }
+
+      // Rating
+      if (selectedRating !== 'All') {
+        const ratingThreshold = Number(selectedRating.replace('+', ''));
+        const itemRating = HARDCODED_RATINGS[Number(item.id) % HARDCODED_RATINGS.length].rating;
+        if (itemRating < ratingThreshold) return false;
+      }
+
+      // Price Range
+      const itemPrice = Number(item.price) || 0;
+      if (itemPrice < priceRange.min || itemPrice > priceRange.max) {
+        return false;
+      }
+
+      // Search query
+      if (query) {
+        const match = [item.title, item.vendor_name, item.category, item.type, item.description, item.coupon_code]
+          .some(val => String(val || '').toLowerCase().includes(query));
+        if (!match) return false;
+      }
+
+      return true;
+    });
+
     const dateValue = (value: string, fallback: number) => {
       const time = Date.parse(value);
       return Number.isFinite(time) ? time : fallback;
     };
+
     if (sortBy === 'Newest') filtered.sort((a, b) => dateValue(b.created_at, 0) - dateValue(a.created_at, 0));
-    if (sortBy === 'Expiring Soon') filtered.sort((a, b) => dateValue(a.expiry, Infinity) - dateValue(b.expiry, Infinity));
-    if (sortBy === 'Title A-Z') filtered.sort((a, b) => a.title.localeCompare(b.title));
-    if (sortBy === 'Price High-Low') filtered.sort((a, b) => (Number(b.price) || 0) - (Number(a.price) || 0));
-    if (sortBy === 'Price Low-High') filtered.sort((a, b) => (Number(a.price) || 0) - (Number(b.price) || 0));
+    else if (sortBy === 'Expiring Soon') filtered.sort((a, b) => dateValue(a.expiry, Infinity) - dateValue(b.expiry, Infinity));
+    else if (sortBy === 'Title A-Z') filtered.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+    else if (sortBy === 'Price High-Low') filtered.sort((a, b) => (Number(b.price) || 0) - (Number(a.price) || 0));
+    else if (sortBy === 'Price Low-High') filtered.sort((a, b) => (Number(a.price) || 0) - (Number(b.price) || 0));
+    else if (sortBy === 'Rating High-Low') {
+      filtered.sort((a, b) => {
+        const rA = HARDCODED_RATINGS[Number(a.id) % HARDCODED_RATINGS.length].rating;
+        const rB = HARDCODED_RATINGS[Number(b.id) % HARDCODED_RATINGS.length].rating;
+        return rB - rA;
+      });
+    }
+
     setListings(filtered);
     setSearchResults(filtered);
-  }, [allListings, searchQuery, selectedCategoryId, featuredOnly, sortBy, selectedActivity, selectedLocation, selectedRating, selectedPriceRange]);
+  }, [allListings, searchQuery, selectedCategoryIds, selectedCategoryId, selectedVendors, selectedCouponIds, featuredOnly, sortBy, selectedLocation, selectedRating, selectedPriceRange]);
+
+  const activeFiltersCount = (
+    (sortBy !== 'Default' ? 1 : 0) +
+    (selectedPriceRange !== 'All' ? 1 : 0) +
+    selectedVendors.length +
+    selectedCategoryIds.length +
+    (selectedRating !== 'All' ? 1 : 0) +
+    (selectedLocation !== 'All' ? 1 : 0) +
+    (featuredOnly ? 1 : 0)
+  );
 
   const resetFilters = () => {
-    setSelectedCategory('All'); setSelectedCategoryId(0); setSearchQuery('');
-    setShowSearchResults(false); setFeaturedOnly(false); setSortBy('Default');
-    setSelectedActivity('All'); setSelectedLocation('All');
-    setSelectedRating('All'); setSelectedPriceRange('All');
+    setSelectedCategory('All');
+    setSelectedCategoryId(0);
+    setSelectedCategoryIds([]);
+    setSelectedVendors([]);
+    setSelectedCouponIds([]);
+    setSearchQuery('');
+    setShowSearchResults(false);
+    setFeaturedOnly(false);
+    setSortBy('Default');
+    setSelectedLocation('All');
+    setSelectedRating('All');
+    setSelectedPriceRange('All');
+  };
+
+  const toggleVendorFilter = (vId: number) => {
+    setSelectedVendors(prev => {
+      if (prev.includes(vId)) return prev.filter(id => id !== vId);
+      return [...prev, vId];
+    });
+  };
+
+  const toggleCategoryMultiFilter = (catId: number) => {
+    setSelectedCategoryIds(prev => {
+      if (prev.includes(catId)) return prev.filter(id => id !== catId);
+      return [...prev, catId];
+    });
   };
 
   useEffect(() => {
@@ -249,42 +375,46 @@ export default function ListingsScreen() {
       const items = await readCart();
       await AsyncStorage.setItem('cartCount', String(items.reduce((sum, item) => sum + item.quantity, 0)));
     } catch (error) {
-      console.error('Refresh cart count error:', error);
+      console.error('Error refreshing cart count:', error);
     }
   };
 
-  const addToCart = async (item: any) => {
+  const addToCart = async (coupon: any) => {
     if (addingRef.current) return;
     addingRef.current = true;
-    const listingId = Number(item.id);
-    setCartMessage('');
-    setAddingToCart(listingId);
+    setAddingToCart(coupon.id);
     try {
-      if (cartItems.has(listingId)) {
-        setCartMessage('This coupon is already in your cart. Change its quantity in Cart.');
-        return;
-      }
-      const added = await addCartItem(item);
-      if (!added) {
-        setCartMessage('This coupon is already in your cart.');
-        return;
-      }
-      setCartItems(previous => new Set(previous).add(listingId));
-      setCartMessage(`Added "${item.title}" to your cart.`);
+      await addCartItem({
+        id: coupon.id,
+        listing_id: coupon.id,
+        title: coupon.title,
+        price: coupon.price,
+        image_url: coupon.image,
+        quantity: 1,
+        vendor_id: coupon.vendor_id,
+        vendor_name: coupon.vendor_name,
+        category: coupon.category,
+      }, params.ad_id ? Number(params.ad_id) : undefined);
+      const updatedCart = await readCart();
+      setCartItems(new Set(updatedCart.map((item: any) => item.listing_id)));
+      await AsyncStorage.setItem('cartCount', String(updatedCart.reduce((sum: number, item: any) => sum + item.quantity, 0)));
+      setCartMessage(`Added "${coupon.title}" to cart!`);
+      setTimeout(() => setCartMessage(''), 3000);
     } catch (error) {
-      setCartMessage(error instanceof Error ? error.message : 'Unable to add coupon. Please try again.');
+      console.error('Error adding to cart:', error);
+      setCartMessage('Failed to add coupon to cart.');
     } finally {
-      addingRef.current = false;
       setAddingToCart(null);
+      addingRef.current = false;
     }
   };
 
   const fetchData = async () => {
+    setLoading(true);
     try {
-      setLoading(true);
       await Promise.all([fetchCategories(), fetchCoupons(), fetchNewlyAdded()]);
     } catch (error) {
-      console.error('Error fetching data:', error);
+      console.error('Error fetching listings screen data:', error);
     } finally {
       setLoading(false);
     }
@@ -295,7 +425,7 @@ export default function ListingsScreen() {
       const response = await fetch(`${API_BASE_URL}/api/categories`);
       if (response.ok) {
         const data = await response.json();
-        if (data.status === 'success' && data.data) setCategories(data.data);
+        setCategories(data.data || data.categories || []);
       }
     } catch (error) { console.error('Error fetching categories:', error); }
   };
@@ -339,8 +469,15 @@ export default function ListingsScreen() {
     setShowSearchResults(text.trim().length > 0);
   };
   const clearSearch = () => handleSearch('');
+
   const handleCategoryFilter = (categoryId: number, categoryName: string) => {
-    setSelectedCategory(categoryName); setSelectedCategoryId(categoryId);
+    setSelectedCategory(categoryName);
+    setSelectedCategoryId(categoryId);
+    if (categoryId === 0) {
+      setSelectedCategoryIds([]);
+    } else {
+      setSelectedCategoryIds([categoryId]);
+    }
   };
 
   const getCategoriesList = () => {
@@ -401,55 +538,313 @@ export default function ListingsScreen() {
         </View>
       )}
 
-      <Modal visible={filterPanel !== null} transparent animationType="fade" onRequestClose={() => setFilterPanel(null)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>{filterPanel}</Text>
-            <ScrollView>
-              {(filterPanel === 'Sort By'
-                ? ['Default', ...(allListings.some(i => i.created_at) ? ['Newest'] : []), ...(allListings.some(i => i.expiry) ? ['Expiring Soon'] : []), 'Title A-Z']
-                : filterPanel === 'Price' ? PRICE_RANGES.map(p => p.label)
-                : filterPanel === 'Activities' ? ['All', ...activities.filter(a => a !== 'All')]
-                : filterPanel === 'Location' ? ['All', ...locations.filter(l => l !== 'All')]
-                : filterPanel === 'Rating' ? ['All', '4.0+', '4.5+', '4.8+']
-                : [...(hasFeatured ? ['Featured only', 'All coupons'] : []), 'Reset Filters']
-              ).map(option => {
-                const selected =
-                  filterPanel === 'Sort By' ? sortBy === option
-                  : filterPanel === 'Price' ? selectedPriceRange === option
-                  : filterPanel === 'Activities' ? selectedActivity === option
-                  : filterPanel === 'Location' ? selectedLocation === option
-                  : filterPanel === 'Rating' ? selectedRating === option
-                  : option === (featuredOnly ? 'Featured only' : 'All coupons');
-                return (
-                  <TouchableOpacity
-                    key={option}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected }}
-                    style={styles.modalOption}
-                    onPress={() => {
-                      if (filterPanel === 'Sort By') setSortBy(option);
-                      else if (filterPanel === 'Price') setSelectedPriceRange(option);
-                      else if (filterPanel === 'Activities') setSelectedActivity(option);
-                      else if (filterPanel === 'Location') setSelectedLocation(option);
-                      else if (filterPanel === 'Rating') setSelectedRating(option);
-                      else if (option === 'Reset Filters') resetFilters();
-                      else setFeaturedOnly(option === 'Featured only');
-                      setFilterPanel(null);
-                    }}
-                  >
-                    <Text style={[styles.modalOptionText, selected && styles.modalOptionTextActive]}>
-                      {option}{selected ? ' (selected)' : ''}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-            <TouchableOpacity onPress={() => setFilterPanel(null)} style={{ paddingTop: 16 }}>
-              <Text style={{ color: '#FF6B00', fontWeight: '700' }}>Close</Text>
+      {/* ============================================================== */}
+      {/* COMPREHENSIVE E-COMMERCE FILTER MODAL (AMAZON / MYNTRA STYLE) */}
+      {/* ============================================================== */}
+      <Modal
+        visible={isFilterModalOpen}
+        animationType="slide"
+        transparent={false}
+        onRequestClose={() => setIsFilterModalOpen(false)}
+      >
+        <SafeAreaView style={styles.filterModalContainer}>
+          {/* Modal Header */}
+          <View style={styles.filterModalHeader}>
+            <TouchableOpacity onPress={() => setIsFilterModalOpen(false)} style={{ padding: 6 }}>
+              <Ionicons name="close" size={24} color="#1C1C1E" />
+            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Text style={styles.filterModalHeaderTitle}>Filters</Text>
+              {activeFiltersCount > 0 && (
+                <View style={styles.filterActiveCountBadge}>
+                  <Text style={styles.filterActiveCountText}>{activeFiltersCount}</Text>
+                </View>
+              )}
+            </View>
+            <TouchableOpacity onPress={resetFilters} style={{ padding: 6 }}>
+              <Text style={styles.filterResetAllText}>Clear All</Text>
             </TouchableOpacity>
           </View>
-        </View>
+
+          {/* 2-Column Body */}
+          <View style={styles.filterModalBody}>
+            {/* Left Column: Categories */}
+            <View style={styles.filterLeftSidebar}>
+              <TouchableOpacity
+                style={[styles.filterSidebarTab, activeFilterTab === 'sort' && styles.filterSidebarTabActive]}
+                onPress={() => setActiveFilterTab('sort')}
+              >
+                <Text style={[styles.filterSidebarTabText, activeFilterTab === 'sort' && styles.filterSidebarTabTextActive]}>
+                  Sort By
+                </Text>
+                {sortBy !== 'Default' && <View style={styles.filterTabDot} />}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.filterSidebarTab, activeFilterTab === 'price' && styles.filterSidebarTabActive]}
+                onPress={() => setActiveFilterTab('price')}
+              >
+                <Text style={[styles.filterSidebarTabText, activeFilterTab === 'price' && styles.filterSidebarTabTextActive]}>
+                  Price
+                </Text>
+                {selectedPriceRange !== 'All' && <View style={styles.filterTabDot} />}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.filterSidebarTab, activeFilterTab === 'vendor' && styles.filterSidebarTabActive]}
+                onPress={() => setActiveFilterTab('vendor')}
+              >
+                <Text style={[styles.filterSidebarTabText, activeFilterTab === 'vendor' && styles.filterSidebarTabTextActive]}>
+                  Brand / Vendor
+                </Text>
+                {selectedVendors.length > 0 && (
+                  <View style={styles.filterTabBadge}>
+                    <Text style={styles.filterTabBadgeText}>{selectedVendors.length}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.filterSidebarTab, activeFilterTab === 'category' && styles.filterSidebarTabActive]}
+                onPress={() => setActiveFilterTab('category')}
+              >
+                <Text style={[styles.filterSidebarTabText, activeFilterTab === 'category' && styles.filterSidebarTabTextActive]}>
+                  Category
+                </Text>
+                {selectedCategoryIds.length > 0 && (
+                  <View style={styles.filterTabBadge}>
+                    <Text style={styles.filterTabBadgeText}>{selectedCategoryIds.length}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.filterSidebarTab, activeFilterTab === 'rating' && styles.filterSidebarTabActive]}
+                onPress={() => setActiveFilterTab('rating')}
+              >
+                <Text style={[styles.filterSidebarTabText, activeFilterTab === 'rating' && styles.filterSidebarTabTextActive]}>
+                  Rating
+                </Text>
+                {selectedRating !== 'All' && <View style={styles.filterTabDot} />}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.filterSidebarTab, activeFilterTab === 'location' && styles.filterSidebarTabActive]}
+                onPress={() => setActiveFilterTab('location')}
+              >
+                <Text style={[styles.filterSidebarTabText, activeFilterTab === 'location' && styles.filterSidebarTabTextActive]}>
+                  Location
+                </Text>
+                {selectedLocation !== 'All' && <View style={styles.filterTabDot} />}
+              </TouchableOpacity>
+            </View>
+
+            {/* Right Column: Option List */}
+            <ScrollView style={styles.filterRightContent} showsVerticalScrollIndicator={false}>
+              {/* SORT BY OPTIONS */}
+              {activeFilterTab === 'sort' && (
+                <View style={styles.filterOptionGroup}>
+                  {SORT_OPTIONS.map(opt => {
+                    const isSelected = sortBy === opt.value;
+                    return (
+                      <TouchableOpacity
+                        key={opt.value}
+                        style={styles.filterOptionRow}
+                        onPress={() => setSortBy(opt.value)}
+                      >
+                        <Ionicons
+                          name={isSelected ? 'radio-button-on' : 'radio-button-off'}
+                          size={20}
+                          color={isSelected ? '#FF6B00' : '#8E8E93'}
+                        />
+                        <Text style={[styles.filterOptionLabel, isSelected && styles.filterOptionLabelActive]}>
+                          {opt.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+
+              {/* PRICE OPTIONS */}
+              {activeFilterTab === 'price' && (
+                <View style={styles.filterOptionGroup}>
+                  {PRICE_RANGES.map(opt => {
+                    const isSelected = selectedPriceRange === opt.label;
+                    return (
+                      <TouchableOpacity
+                        key={opt.label}
+                        style={styles.filterOptionRow}
+                        onPress={() => setSelectedPriceRange(opt.label)}
+                      >
+                        <Ionicons
+                          name={isSelected ? 'radio-button-on' : 'radio-button-off'}
+                          size={20}
+                          color={isSelected ? '#FF6B00' : '#8E8E93'}
+                        />
+                        <Text style={[styles.filterOptionLabel, isSelected && styles.filterOptionLabelActive]}>
+                          {opt.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+
+              {/* VENDOR / BRAND OPTIONS */}
+              {activeFilterTab === 'vendor' && (
+                <View style={styles.filterOptionGroup}>
+                  <View style={styles.vendorSearchBox}>
+                    <Ionicons name="search" size={16} color="#8E8E93" />
+                    <TextInput
+                      placeholder="Search brands / vendors..."
+                      value={vendorSearch}
+                      onChangeText={setVendorSearch}
+                      style={styles.vendorSearchInput}
+                      placeholderTextColor="#8E8E93"
+                    />
+                    {vendorSearch.length > 0 && (
+                      <TouchableOpacity onPress={() => setVendorSearch('')}>
+                        <Ionicons name="close-circle" size={16} color="#8E8E93" />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+
+                  {vendorsList
+                    .filter(v => !vendorSearch || v.name.toLowerCase().includes(vendorSearch.toLowerCase()))
+                    .map(v => {
+                      const isSelected = selectedVendors.includes(v.id);
+                      const couponCount = allListings.filter(i => Number(i.vendor_id) === v.id).length;
+                      return (
+                        <TouchableOpacity
+                          key={v.id}
+                          style={styles.filterOptionRow}
+                          onPress={() => toggleVendorFilter(v.id)}
+                        >
+                          <Ionicons
+                            name={isSelected ? 'checkbox' : 'square-outline'}
+                            size={20}
+                            color={isSelected ? '#FF6B00' : '#8E8E93'}
+                          />
+                          <View style={{ flex: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <Text style={[styles.filterOptionLabel, isSelected && styles.filterOptionLabelActive]}>
+                              {v.name}
+                            </Text>
+                            <Text style={styles.filterOptionBadge}>{couponCount}</Text>
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  {vendorsList.length === 0 && (
+                    <Text style={styles.emptyFilterListText}>No vendors found</Text>
+                  )}
+                </View>
+              )}
+
+              {/* CATEGORY OPTIONS */}
+              {activeFilterTab === 'category' && (
+                <View style={styles.filterOptionGroup}>
+                  {displayCategories
+                    .filter(c => c.id !== 0)
+                    .map(c => {
+                      const isSelected = selectedCategoryIds.includes(c.id);
+                      const count = allListings.filter(i => Number(i.category_id) === c.id).length;
+                      return (
+                        <TouchableOpacity
+                          key={c.id}
+                          style={styles.filterOptionRow}
+                          onPress={() => toggleCategoryMultiFilter(c.id)}
+                        >
+                          <Ionicons
+                            name={isSelected ? 'checkbox' : 'square-outline'}
+                            size={20}
+                            color={isSelected ? '#FF6B00' : '#8E8E93'}
+                          />
+                          <View style={{ flex: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <Text style={[styles.filterOptionLabel, isSelected && styles.filterOptionLabelActive]}>
+                              {c.name}
+                            </Text>
+                            <Text style={styles.filterOptionBadge}>{count}</Text>
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                </View>
+              )}
+
+              {/* RATING OPTIONS */}
+              {activeFilterTab === 'rating' && (
+                <View style={styles.filterOptionGroup}>
+                  {RATING_OPTIONS.map(opt => {
+                    const isSelected = selectedRating === opt.value;
+                    return (
+                      <TouchableOpacity
+                        key={opt.value}
+                        style={styles.filterOptionRow}
+                        onPress={() => setSelectedRating(opt.value)}
+                      >
+                        <Ionicons
+                          name={isSelected ? 'radio-button-on' : 'radio-button-off'}
+                          size={20}
+                          color={isSelected ? '#FF6B00' : '#8E8E93'}
+                        />
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Text style={[styles.filterOptionLabel, isSelected && styles.filterOptionLabelActive]}>
+                            {opt.label}
+                          </Text>
+                          {opt.value !== 'All' && <Ionicons name="star" size={14} color="#F5A623" />}
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+
+              {/* LOCATION OPTIONS */}
+              {activeFilterTab === 'location' && (
+                <View style={styles.filterOptionGroup}>
+                  {locations.map(loc => {
+                    const isSelected = selectedLocation === loc;
+                    return (
+                      <TouchableOpacity
+                        key={loc}
+                        style={styles.filterOptionRow}
+                        onPress={() => setSelectedLocation(loc)}
+                      >
+                        <Ionicons
+                          name={isSelected ? 'radio-button-on' : 'radio-button-off'}
+                          size={20}
+                          color={isSelected ? '#FF6B00' : '#8E8E93'}
+                        />
+                        <Text style={[styles.filterOptionLabel, isSelected && styles.filterOptionLabelActive]}>
+                          {loc}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+            </ScrollView>
+          </View>
+
+          {/* Modal Footer */}
+          <View style={styles.filterModalFooter}>
+            <TouchableOpacity
+              style={styles.filterModalCloseBtn}
+              onPress={() => setIsFilterModalOpen(false)}
+            >
+              <Text style={styles.filterModalCloseText}>Close</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.filterModalApplyBtn}
+              onPress={() => setIsFilterModalOpen(false)}
+            >
+              <Text style={styles.filterModalApplyText}>
+                Apply Filters ({listings.length})
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
       </Modal>
 
       {/* Header */}
@@ -471,7 +866,7 @@ export default function ListingsScreen() {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#FF6B00']} />}
       >
-        {/* Search + Filters */}
+        {/* Search + Filters Button */}
         <View style={styles.searchRow}>
           <View style={styles.searchBar}>
             <Ionicons name="search-outline" size={18} color="#8E8E93" style={{ marginRight: 8 }} />
@@ -489,9 +884,14 @@ export default function ListingsScreen() {
               </TouchableOpacity>
             )}
           </View>
-          <TouchableOpacity style={styles.filterButton} onPress={() => setFilterPanel('More Filters')}>
-            <Ionicons name="options-outline" size={16} color="#FF6B00" />
-            <Text style={styles.filterButtonText}>Filters</Text>
+          <TouchableOpacity
+            style={[styles.filterButton, activeFiltersCount > 0 && styles.filterButtonActive]}
+            onPress={() => setIsFilterModalOpen(true)}
+          >
+            <Ionicons name="options-outline" size={16} color={activeFiltersCount > 0 ? '#fff' : '#FF6B00'} />
+            <Text style={[styles.filterButtonText, activeFiltersCount > 0 && { color: '#fff' }]}>
+              Filters{activeFiltersCount > 0 ? ` (${activeFiltersCount})` : ''}
+            </Text>
           </TouchableOpacity>
         </View>
 
@@ -508,12 +908,12 @@ export default function ListingsScreen() {
           </View>
         )}
 
-        {/* Categories */}
+        {/* Categories Bar */}
         {displayCategories.length > 1 && !showSearchResults && (
           <View style={styles.categoriesRow}>
             {visibleCategories.map((cat, idx) => {
               const categoryImageUrl = getImageUrl(cat.image_url);
-              const isActive = selectedCategoryId === cat.id;
+              const isActive = (cat.id === 0 && selectedCategoryIds.length === 0) || selectedCategoryIds.includes(cat.id);
               return (
                 <TouchableOpacity key={idx} style={styles.categoryItem} onPress={() => handleCategoryFilter(cat.id, cat.name)}>
                   <View style={[styles.categoryIconBox, isActive && styles.categoryIconBoxActive]}>
@@ -552,19 +952,72 @@ export default function ListingsScreen() {
           </View>
         )}
 
-        {/* Filter chips */}
+        {/* Horizontal Quick Filter Chips */}
         <View style={styles.filterContainer}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
-            {filterOptions.map((filter, idx) => (
-              <TouchableOpacity key={idx} style={styles.filterChip} onPress={() => setFilterPanel(filter.label)}>
-                <View>
-                  <Text style={styles.filterChipLabel}>{filter.label}</Text>
-                  <Text style={styles.filterChipValue}>
-                    {filter.value || 'All'} <Ionicons name={filter.icon as any} size={12} color="#1C1C1E" />
-                  </Text>
-                </View>
+            {/* Sort Chip */}
+            <TouchableOpacity
+              style={[styles.filterChip, sortBy !== 'Default' && styles.filterChipSelected]}
+              onPress={() => { setActiveFilterTab('sort'); setIsFilterModalOpen(true); }}
+            >
+              <Text style={styles.filterChipLabel}>Sort By</Text>
+              <Text style={[styles.filterChipValue, sortBy !== 'Default' && { color: '#FF6B00' }]}>
+                {sortBy} <Ionicons name="chevron-down" size={11} color={sortBy !== 'Default' ? '#FF6B00' : '#1C1C1E'} />
+              </Text>
+            </TouchableOpacity>
+
+            {/* Price Chip */}
+            <TouchableOpacity
+              style={[styles.filterChip, selectedPriceRange !== 'All' && styles.filterChipSelected]}
+              onPress={() => { setActiveFilterTab('price'); setIsFilterModalOpen(true); }}
+            >
+              <Text style={styles.filterChipLabel}>Price</Text>
+              <Text style={[styles.filterChipValue, selectedPriceRange !== 'All' && { color: '#FF6B00' }]}>
+                {selectedPriceRange} <Ionicons name="chevron-down" size={11} color={selectedPriceRange !== 'All' ? '#FF6B00' : '#1C1C1E'} />
+              </Text>
+            </TouchableOpacity>
+
+            {/* Brands / Vendors Chip */}
+            <TouchableOpacity
+              style={[styles.filterChip, selectedVendors.length > 0 && styles.filterChipSelected]}
+              onPress={() => { setActiveFilterTab('vendor'); setIsFilterModalOpen(true); }}
+            >
+              <Text style={styles.filterChipLabel}>Brand</Text>
+              <Text style={[styles.filterChipValue, selectedVendors.length > 0 && { color: '#FF6B00' }]}>
+                {selectedVendors.length > 0 ? `${selectedVendors.length} selected` : 'All'}{' '}
+                <Ionicons name="chevron-down" size={11} color={selectedVendors.length > 0 ? '#FF6B00' : '#1C1C1E'} />
+              </Text>
+            </TouchableOpacity>
+
+            {/* Rating Chip */}
+            <TouchableOpacity
+              style={[styles.filterChip, selectedRating !== 'All' && styles.filterChipSelected]}
+              onPress={() => { setActiveFilterTab('rating'); setIsFilterModalOpen(true); }}
+            >
+              <Text style={styles.filterChipLabel}>Rating</Text>
+              <Text style={[styles.filterChipValue, selectedRating !== 'All' && { color: '#FF6B00' }]}>
+                {selectedRating} <Ionicons name="chevron-down" size={11} color={selectedRating !== 'All' ? '#FF6B00' : '#1C1C1E'} />
+              </Text>
+            </TouchableOpacity>
+
+            {/* Location Chip */}
+            <TouchableOpacity
+              style={[styles.filterChip, selectedLocation !== 'All' && styles.filterChipSelected]}
+              onPress={() => { setActiveFilterTab('location'); setIsFilterModalOpen(true); }}
+            >
+              <Text style={styles.filterChipLabel}>Location</Text>
+              <Text style={[styles.filterChipValue, selectedLocation !== 'All' && { color: '#FF6B00' }]}>
+                {selectedLocation} <Ionicons name="chevron-down" size={11} color={selectedLocation !== 'All' ? '#FF6B00' : '#1C1C1E'} />
+              </Text>
+            </TouchableOpacity>
+
+            {/* Clear All Chip */}
+            {activeFiltersCount > 0 && (
+              <TouchableOpacity style={styles.filterClearChip} onPress={resetFilters}>
+                <Ionicons name="refresh-outline" size={14} color="#FF6B00" />
+                <Text style={styles.filterClearChipText}>Reset</Text>
               </TouchableOpacity>
-            ))}
+            )}
           </ScrollView>
         </View>
 
@@ -598,53 +1051,43 @@ export default function ListingsScreen() {
                 style={{ flex: 1 }}
                 initialRegion={(() => {
                   if (listings.length === 0) return { latitude: 22.5726, longitude: 88.3639, latitudeDelta: 0.05, longitudeDelta: 0.05 };
-                  const lats = listings.map(l => l.latitude);
-                  const lngs = listings.map(l => l.longitude);
-                  const minLat = Math.min(...lats);
-                  const maxLat = Math.max(...lats);
-                  const minLng = Math.min(...lngs);
-                  const maxLng = Math.max(...lngs);
-                  const padLat = Math.max((maxLat - minLat) * 0.3, 0.01);
-                  const padLng = Math.max((maxLng - minLng) * 0.3, 0.01);
+                  const validItem = listings.find(i => i.latitude && i.longitude);
                   return {
-                    latitude: (minLat + maxLat) / 2,
-                    longitude: (minLng + maxLng) / 2,
-                    latitudeDelta: (maxLat - minLat) + padLat,
-                    longitudeDelta: (maxLng - minLng) + padLng,
+                    latitude: Number(validItem?.latitude) || 22.5726,
+                    longitude: Number(validItem?.longitude) || 88.3639,
+                    latitudeDelta: 0.05,
+                    longitudeDelta: 0.05,
                   };
                 })()}
               >
-                  {listings.map((item, idx) => (
+                {listings.map((item, index) => {
+                  const lat = Number(item.latitude);
+                  const lng = Number(item.longitude);
+                  if (isNaN(lat) || isNaN(lng)) return null;
+                  const isActive = index === activeMapIndex;
+                  return (
                     <Marker
                       key={item.id}
-                      coordinate={{ latitude: item.latitude, longitude: item.longitude }}
-                      onPress={() => setSelectedMapMarker(idx)}
+                      coordinate={{ latitude: lat, longitude: lng }}
+                      onPress={() => setSelectedMapMarker(index)}
+                      pinColor={isActive ? '#C1121F' : '#FF3B30'}
                     >
-                      <View style={[styles.mapMarkerPin, idx === activeMapIndex && styles.mapMarkerPinActive]}>
-                        <Ionicons name="location" size={16} color="#FFFFFF" />
-                      </View>
-                      <Callout tooltip>
-                        <View style={{ backgroundColor: '#fff', borderRadius: 8, padding: 8, width: 200, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 4, elevation: 5 }}>
-                          <Text style={{ fontWeight: 'bold', fontSize: 14, marginBottom: 4 }} numberOfLines={1}>{item.title}</Text>
-                          <Text style={{ fontSize: 12, color: '#666', marginBottom: 2 }} numberOfLines={1}>{item.category} • {item.city}</Text>
-                          <Text style={{ fontSize: 12, color: '#FF6B00', fontWeight: 'bold' }}>${item.price}</Text>
+                      <Callout
+                        tooltip
+                        onPress={() =>
+                          router.push({ pathname: '/listing-details', params: { id: String(item.id), ad_id: params.ad_id ? String(params.ad_id) : undefined } })
+                        }
+                      >
+                        <View style={styles.mapCalloutContainer}>
+                          <Text style={styles.mapCalloutTitle} numberOfLines={1}>{item.title}</Text>
+                          <Text style={styles.mapCalloutSubtitle} numberOfLines={1}>{item.category} • {formatCouponPrice(item.price)}</Text>
+                          <Text style={styles.mapCalloutTap}>Tap to view offer</Text>
                         </View>
                       </Callout>
                     </Marker>
-                  ))}
-                </MapView>
-
-              <View style={styles.mapSearchPill}>
-                <Ionicons name="search" size={12} color="#1C1C1E" />
-                <Text style={styles.mapSearchPillText}>Search this area</Text>
-              </View>
-
-              <View style={styles.mapTopPills}>
-                <View style={styles.mapTopPill}><Ionicons name="pricetag-outline" size={11} color="#1C1C1E" /><Text style={styles.mapTopPillText}>Price</Text></View>
-                <View style={styles.mapTopPill}><Ionicons name="star-outline" size={11} color="#1C1C1E" /><Text style={styles.mapTopPillText}>Rating</Text></View>
-                <View style={styles.mapTopPill}><Ionicons name="time-outline" size={11} color="#1C1C1E" /><Text style={styles.mapTopPillText}>Hours</Text></View>
-                <View style={styles.mapTopPill}><Ionicons name="options-outline" size={11} color="#1C1C1E" /><Text style={styles.mapTopPillText}>All filters</Text></View>
-              </View>
+                  );
+                })}
+              </MapView>
 
               <TouchableOpacity style={styles.mapLayersBtn}>
                 <Ionicons name="layers-outline" size={16} color="#1C1C1E" />
@@ -656,7 +1099,7 @@ export default function ListingsScreen() {
                 style={styles.mapPreviewCard}
                 activeOpacity={0.9}
                 onPress={() =>
-                  router.push({ pathname: '/listing-details', params: { id: String(activeMapListing.id) } })
+                  router.push({ pathname: '/listing-details', params: { id: String(activeMapListing.id), ad_id: params.ad_id ? String(params.ad_id) : undefined } })
                 }
               >
                 <Image
@@ -697,7 +1140,7 @@ export default function ListingsScreen() {
                       style={styles.mapPreviewDetailsBtn}
                       onPress={(e) => {
                         e.stopPropagation();
-                        router.push({ pathname: '/listing-details', params: { id: String(activeMapListing.id) } });
+                        router.push({ pathname: '/listing-details', params: { id: String(activeMapListing.id), ad_id: params.ad_id ? String(params.ad_id) : undefined } });
                       }}
                     >
                       <Ionicons name="eye-outline" size={13} color="#FF6B00" />
@@ -751,7 +1194,11 @@ export default function ListingsScreen() {
                   <View style={styles.mapNearbyBody}>
                     <View style={styles.mapNearbyTitleRow}>
                       <Text style={styles.mapNearbyName} numberOfLines={1}>{item.title}</Text>
-                      <Ionicons name="checkmark-circle" size={13} color="#FF6B00" />
+                      <View style={[styles.statusBadge, item.status?.toLowerCase() === 'open' ? styles.openBadge : styles.closedBadge]}>
+                        <Text style={[styles.statusText, item.status?.toLowerCase() === 'open' ? styles.openText : styles.closedText]}>
+                          {item.status || 'Open'}
+                        </Text>
+                      </View>
                     </View>
                     <Text style={styles.mapNearbySub} numberOfLines={1}>
                       {item.category} • {item.city || 'Downtown'}
@@ -764,7 +1211,6 @@ export default function ListingsScreen() {
                       <Text style={styles.mapNearbyDistance}>{distance}</Text>
                     </View>
                   </View>
-                  <Ionicons name="chevron-forward" size={16} color="#C7C7CC" />
                 </TouchableOpacity>
               );
             })}
@@ -774,21 +1220,25 @@ export default function ListingsScreen() {
         {/* ============================== LIST VIEW ============================== */}
         {viewMode === 'list' &&
           listings.map((item, index) => {
-            const discount = HARDCODED_DISCOUNTS[index % HARDCODED_DISCOUNTS.length];
-            const ratingInfo = HARDCODED_RATINGS[index % HARDCODED_RATINGS.length];
-            const distance = HARDCODED_DISTANCES[index % HARDCODED_DISTANCES.length];
+            const ratingInfo = HARDCODED_RATINGS[Number(item.id) % HARDCODED_RATINGS.length];
+            const distance = HARDCODED_DISTANCES[Number(item.id) % HARDCODED_DISTANCES.length];
+            const discount = HARDCODED_DISCOUNTS[Number(item.id) % HARDCODED_DISCOUNTS.length];
 
             return (
               <TouchableOpacity
                 key={item.id}
                 style={styles.listingCard}
+                onPress={() => router.push({ pathname: '/listing-details', params: { id: String(item.id), ad_id: params.ad_id ? String(params.ad_id) : undefined } })}
                 activeOpacity={0.9}
-                onPress={() => router.push({ pathname: '/listing-details', params: { id: String(item.id) } })}
               >
-                {/* LEFT: WIDE but SHORT image */}
+                {/* LEFT: Image */}
                 <View style={styles.imageContainer}>
                   <Image
-                    source={item.image ? { uri: item.image } : require('../../assets/images/Roameo-logo.png')}
+                    source={
+                      item.image
+                        ? { uri: item.image }
+                        : require('../../assets/images/Roameo-logo.png')
+                    }
                     style={styles.listingImage}
                     resizeMode="cover"
                   />
@@ -824,7 +1274,7 @@ export default function ListingsScreen() {
                   </View>
 
                   <Text style={styles.listingType} numberOfLines={1}>
-                    {item.category || 'Uncategorized'} • {item.city || 'Downtown'}
+                    {item.category || 'Uncategorized'} • {item.vendor_name ? `${item.vendor_name} • ` : ''}{item.city || 'Downtown'}
                   </Text>
 
                   <View style={styles.ratingRow}>
@@ -833,7 +1283,7 @@ export default function ListingsScreen() {
                       {ratingInfo.rating.toFixed(1)}
                       <Text style={styles.ratingReviews}> ({ratingInfo.reviews} reviews)</Text>
                     </Text>
-                    <Text style={styles.ratingPrice}> • $$</Text>
+                    <Text style={styles.ratingPrice}> • {formatCouponPrice(item.price)}</Text>
                   </View>
 
                   <View style={styles.distanceRow}>
@@ -846,7 +1296,7 @@ export default function ListingsScreen() {
                       style={styles.detailsButton}
                       onPress={event => {
                         event.stopPropagation();
-                        router.push({ pathname: '/listing-details', params: { id: String(item.id) } });
+                        router.push({ pathname: '/listing-details', params: { id: String(item.id), ad_id: params.ad_id ? String(params.ad_id) : undefined } });
                       }}
                     >
                       <Ionicons name="eye-outline" size={12} color="#FF6B00" />
@@ -883,6 +1333,9 @@ export default function ListingsScreen() {
             <Ionicons name="search-outline" size={64} color="#D1D1D6" />
             <Text style={styles.emptyTitle}>No results found</Text>
             <Text style={styles.emptySubtitle}>Try adjusting your search or filters</Text>
+            <TouchableOpacity style={styles.emptyResetBtn} onPress={resetFilters}>
+              <Text style={styles.emptyResetBtnText}>Reset All Filters</Text>
+            </TouchableOpacity>
           </View>
         )}
 
@@ -938,6 +1391,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16, height: 44, borderRadius: 22,
     borderWidth: 1.5, borderColor: '#FF6B00', backgroundColor: '#FFFFFF',
   },
+  filterButtonActive: {
+    backgroundColor: '#FF6B00',
+    borderColor: '#FF6B00',
+  },
   filterButtonText: { color: '#FF6B00', fontWeight: '700', fontSize: 13 },
 
   searchResultInfo: { paddingHorizontal: 16, paddingBottom: 12 },
@@ -968,16 +1425,34 @@ const styles = StyleSheet.create({
 
   // Filter chips
   filterContainer: { paddingHorizontal: 16, marginBottom: 12 },
-  filterScroll: { paddingRight: 16 },
+  filterScroll: { paddingRight: 16, alignItems: 'center' },
   filterChip: {
     backgroundColor: '#FFFFFF',
-    paddingHorizontal: 14, paddingVertical: 8,
+    paddingHorizontal: 12, paddingVertical: 6,
     borderRadius: 12, marginRight: 8,
     borderWidth: 1, borderColor: '#E5E5EA',
-    minWidth: 100,
+    minWidth: 90,
+  },
+  filterChipSelected: {
+    borderColor: '#FF6B00',
+    backgroundColor: '#FFF8F2',
   },
   filterChipLabel: { fontSize: 10, color: '#8E8E93' },
   filterChipValue: { fontSize: 12, color: '#1C1C1E', fontWeight: '700', marginTop: 2 },
+  filterClearChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF0E5',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    gap: 4,
+  },
+  filterClearChipText: {
+    fontSize: 12,
+    color: '#FF6B00',
+    fontWeight: '700',
+  },
 
   // Results header
   resultsHeader: {
@@ -1005,41 +1480,25 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#D0DCC5',
   },
-  mapBlock: { position: 'absolute', backgroundColor: '#D3DFC6', borderRadius: 6 },
-  mapAreaLabel: { position: 'absolute', fontSize: 9, color: '#7A8B6C', fontWeight: '600' },
-  mapMarker: { position: 'absolute' },
-  mapMarkerPin: {
-    width: 26, height: 26, borderRadius: 13,
-    backgroundColor: '#FF3B30',
-    borderWidth: 2, borderColor: '#FFFFFF',
-    justifyContent: 'center', alignItems: 'center',
-    shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 2, shadowOffset: { width: 0, height: 1 },
-  },
-  mapMarkerPinActive: { backgroundColor: '#C1121F', transform: [{ scale: 1.2 }] },
-  mapSearchPill: {
-    position: 'absolute', top: 12, alignSelf: 'center',
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: '#FFFFFF', paddingHorizontal: 10, paddingVertical: 5,
-    borderRadius: 14, borderWidth: 1, borderColor: '#E5E5EA',
-  },
-  mapSearchPillText: { fontSize: 11, fontWeight: '600', color: '#1C1C1E' },
-  mapTopPills: {
-    position: 'absolute', bottom: 10, left: 10, right: 10,
-    flexDirection: 'row', gap: 6, flexWrap: 'wrap',
-  },
-  mapTopPill: {
-    flexDirection: 'row', alignItems: 'center', gap: 3,
-    backgroundColor: '#FFFFFF', paddingHorizontal: 8, paddingVertical: 4,
-    borderRadius: 12, borderWidth: 1, borderColor: '#E5E5EA',
-  },
-  mapTopPillText: { fontSize: 10, fontWeight: '600', color: '#1C1C1E' },
   mapLayersBtn: {
-    position: 'absolute', bottom: 52, right: 10,
+    position: 'absolute', bottom: 12, right: 10,
     width: 32, height: 32, borderRadius: 8,
     backgroundColor: '#FFFFFF',
     justifyContent: 'center', alignItems: 'center',
     borderWidth: 1, borderColor: '#E5E5EA',
+    shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 2, elevation: 2,
   },
+  mapCalloutContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#E5E5EA',
+    width: 160,
+  },
+  mapCalloutTitle: { fontSize: 12, fontWeight: '700', color: '#1C1C1E' },
+  mapCalloutSubtitle: { fontSize: 10, color: '#8E8E93', marginTop: 2 },
+  mapCalloutTap: { fontSize: 9, color: '#FF6B00', fontWeight: '600', marginTop: 4 },
 
   mapPreviewCard: {
     flexDirection: 'row',
@@ -1092,7 +1551,7 @@ const styles = StyleSheet.create({
   mapNearbyDot: { fontSize: 10, color: '#8E8E93' },
   mapNearbyDistance: { fontSize: 10, color: '#8E8E93' },
 
-  // LIST VIEW — image wide + SHORT (landscape thumbnail)
+  // LIST VIEW
   listingCard: {
     flexDirection: 'row',
     paddingHorizontal: 16,
@@ -1120,10 +1579,7 @@ const styles = StyleSheet.create({
     width: 26, height: 26, borderRadius: 13,
     justifyContent: 'center', alignItems: 'center',
   },
-  listingContent: {
-    flex: 1,
-    marginLeft: 12,
-  },
+  listingContent: { flex: 1, marginLeft: 12 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   listingTitle: { fontSize: 14, fontWeight: '700', color: '#1C1C1E', flexShrink: 1 },
   statusBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginLeft: 'auto' },
@@ -1156,12 +1612,18 @@ const styles = StyleSheet.create({
   cartButtonAdded: { backgroundColor: '#22C55E' },
   cartButtonText: { color: '#FFF', fontSize: 11, fontWeight: '700' },
 
-  // Empty
   emptyContainer: { alignItems: 'center', paddingVertical: 40, paddingHorizontal: 20 },
   emptyTitle: { fontSize: 18, fontWeight: '600', color: '#1C1C1E', marginTop: 12 },
   emptySubtitle: { fontSize: 14, color: '#8E8E93', marginTop: 4 },
+  emptyResetBtn: {
+    marginTop: 16,
+    backgroundColor: '#FF6B00',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+  },
+  emptyResetBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
 
-  // Suggest
   suggestContainer: {
     flexDirection: 'row', justifyContent: 'space-between',
     alignItems: 'center', paddingHorizontal: 16, paddingVertical: 16,
@@ -1175,11 +1637,114 @@ const styles = StyleSheet.create({
   },
   suggestLink: { fontSize: 13, color: '#FF6B00', fontWeight: '700' },
 
-  // Modal
-  modalOverlay: { flex: 1, justifyContent: 'center', padding: 24, backgroundColor: 'rgba(0,0,0,0.4)' },
-  modalCard: { backgroundColor: '#fff', borderRadius: 16, padding: 20, maxHeight: '80%' },
-  modalTitle: { fontSize: 20, fontWeight: '700', marginBottom: 16 },
-  modalOption: { paddingVertical: 14 },
-  modalOptionText: { color: '#1C1C1E', fontWeight: '400' },
-  modalOptionTextActive: { color: '#FF6B00', fontWeight: '700' },
+  // ===================================
+  // E-COMMERCE FILTER MODAL STYLES
+  // ===================================
+  filterModalContainer: { flex: 1, backgroundColor: '#FFFFFF' },
+  filterModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E5EA',
+  },
+  filterModalHeaderTitle: { fontSize: 18, fontWeight: '700', color: '#1C1C1E' },
+  filterActiveCountBadge: {
+    backgroundColor: '#FF6B00',
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  filterActiveCountText: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  filterResetAllText: { color: '#FF6B00', fontWeight: '700', fontSize: 14 },
+
+  filterModalBody: { flex: 1, flexDirection: 'row' },
+  filterLeftSidebar: {
+    width: '38%',
+    backgroundColor: '#F8F8FA',
+    borderRightWidth: 1,
+    borderRightColor: '#E5E5EA',
+  },
+  filterSidebarTab: {
+    paddingVertical: 16,
+    paddingHorizontal: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EFEFF4',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  filterSidebarTabActive: {
+    backgroundColor: '#FFFFFF',
+    borderLeftWidth: 4,
+    borderLeftColor: '#FF6B00',
+  },
+  filterSidebarTabText: { fontSize: 13, color: '#6C6C70', fontWeight: '500' },
+  filterSidebarTabTextActive: { color: '#FF6B00', fontWeight: '700' },
+  filterTabDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#FF6B00' },
+  filterTabBadge: {
+    backgroundColor: '#FF6B00',
+    borderRadius: 8,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+  },
+  filterTabBadgeText: { color: '#fff', fontSize: 10, fontWeight: '700' },
+
+  filterRightContent: { flex: 1, padding: 16 },
+  filterOptionGroup: { paddingBottom: 20 },
+  filterOptionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    gap: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F2F2F7',
+  },
+  filterOptionLabel: { fontSize: 14, color: '#1C1C1E', flex: 1 },
+  filterOptionLabelActive: { color: '#FF6B00', fontWeight: '700' },
+  filterOptionBadge: { fontSize: 12, color: '#8E8E93', backgroundColor: '#F2F2F7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10 },
+  emptyFilterListText: { color: '#8E8E93', fontSize: 13, fontStyle: 'italic', marginTop: 20, textAlign: 'center' },
+
+  vendorSearchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F2F2F7',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    height: 38,
+    marginBottom: 10,
+    gap: 6,
+  },
+  vendorSearchInput: { flex: 1, fontSize: 13, color: '#000' },
+
+  filterModalFooter: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E5EA',
+    backgroundColor: '#FFFFFF',
+    gap: 12,
+  },
+  filterModalCloseBtn: {
+    flex: 1,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: '#D1D1D6',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  filterModalCloseText: { color: '#1C1C1E', fontWeight: '700', fontSize: 14 },
+  filterModalApplyBtn: {
+    flex: 2,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#FF6B00',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  filterModalApplyText: { color: '#FFFFFF', fontWeight: '700', fontSize: 14 },
 });

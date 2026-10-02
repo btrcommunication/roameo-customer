@@ -97,7 +97,7 @@ export default function ListingDetailsScreen() {
     try {
       const cart = await readCart();
       if (!cart.some(item => Number(item.coupon_id ?? item.listing_id) === Number(listing.id))) {
-        await addCartItem(listing);
+        await addCartItem(listing, params.ad_id ? Number(params.ad_id) : undefined);
       }
       router.push({ pathname: '/(tabs)/cart', params: { checkout: String(Date.now()) } });
     } catch (cause) {

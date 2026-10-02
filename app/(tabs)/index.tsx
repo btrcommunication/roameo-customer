@@ -656,6 +656,18 @@ export default function HomeScreen() {
           const marketplaces = activeAds.filter((ad: any) => ad.ad_type === 'marketplace');
           setVendorAds(vendors);
           setMarketplaceAds(marketplaces);
+
+          if (activeAds.length > 0) {
+            AsyncStorage.getItem('userData').then(userStr => {
+              const u = userStr ? JSON.parse(userStr) : null;
+              const adIds = activeAds.map((a: any) => a.id);
+              fetch(`${API_BASE_URL}/api/vendorcreation/ads/impressions`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ad_ids: adIds, user_id: u?.id || null })
+              }).catch(() => {});
+            }).catch(() => {});
+          }
         }
       }
     } catch (error) { console.error('Error fetching ads:', error); }
@@ -819,18 +831,102 @@ export default function HomeScreen() {
     );
   };
 
+  const trackAdClick = (adId: number | string) => {
+    if (!adId) return;
+    AsyncStorage.getItem('userData').then(userStr => {
+      const u = userStr ? JSON.parse(userStr) : null;
+      fetch(`${API_BASE_URL}/api/vendorcreation/ads/${adId}/click`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: u?.id || null })
+      }).catch(() => {});
+    }).catch(() => {});
+  };
+
   const openAdCoupon = (ad: any) => {
-    const linkedId = Number(ad.coupon_id ?? ad.coupon?.id);
-    if (Number.isSafeInteger(linkedId) && linkedId > 0) {
-      router.push({ pathname: '/listing-details', params: { id: String(linkedId) } });
+    if (ad?.id) trackAdClick(ad.id);
+
+    // 1. Specific coupon(s) targeting
+    let couponIds: number[] = [];
+    if (ad.coupon_ids) {
+      try {
+        const parsed = typeof ad.coupon_ids === 'string' ? JSON.parse(ad.coupon_ids) : ad.coupon_ids;
+        if (Array.isArray(parsed)) couponIds = parsed.map(Number).filter((n: number) => !isNaN(n) && n > 0);
+        else if (typeof ad.coupon_ids === 'string') couponIds = ad.coupon_ids.split(',').map(Number).filter((n: number) => !isNaN(n) && n > 0);
+      } catch (e) {
+        couponIds = String(ad.coupon_ids).split(',').map(Number).filter((n: number) => !isNaN(n) && n > 0);
+      }
+    }
+    if (ad.coupon_id && !couponIds.includes(Number(ad.coupon_id))) {
+      couponIds.push(Number(ad.coupon_id));
+    }
+
+    if (couponIds.length === 1) {
+      router.push({ pathname: '/listing-details', params: { id: String(couponIds[0]), ad_id: String(ad.id) } });
+      return;
+    } else if (couponIds.length > 1) {
+      router.push({
+        pathname: '/(tabs)/listings',
+        params: {
+          coupon_ids: couponIds.join(','),
+          vendor_id: ad.vendor_id ? String(ad.vendor_id) : undefined,
+          search: ad.vendor_name || undefined,
+          ad_id: String(ad.id)
+        }
+      });
       return;
     }
+
+    // 2. Category targeting
+    let categoryIds: number[] = [];
+    if (ad.category_ids) {
+      try {
+        const parsed = typeof ad.category_ids === 'string' ? JSON.parse(ad.category_ids) : ad.category_ids;
+        if (Array.isArray(parsed)) categoryIds = parsed.map(Number).filter((n: number) => !isNaN(n) && n > 0);
+        else if (typeof ad.category_ids === 'string') categoryIds = ad.category_ids.split(',').map(Number).filter((n: number) => !isNaN(n) && n > 0);
+      } catch (e) {
+        categoryIds = String(ad.category_ids).split(',').map(Number).filter((n: number) => !isNaN(n) && n > 0);
+      }
+    }
+    if (ad.category_id && !categoryIds.includes(Number(ad.category_id))) {
+      categoryIds.push(Number(ad.category_id));
+    }
+
+    if (categoryIds.length > 0) {
+      router.push({
+        pathname: '/(tabs)/listings',
+        params: {
+          category_ids: categoryIds.join(','),
+          category_id: String(categoryIds[0]),
+          category: ad.category_name || undefined,
+          vendor_id: ad.vendor_id ? String(ad.vendor_id) : undefined,
+          search: ad.vendor_name || undefined,
+          ad_id: String(ad.id)
+        }
+      });
+      return;
+    }
+
+    // 3. Fallback / Store-wide All Coupons
+    if (ad.vendor_id) {
+      router.push({
+        pathname: '/(tabs)/listings',
+        params: {
+          vendor_id: String(ad.vendor_id),
+          search: ad.vendor_name || undefined,
+          ad_id: String(ad.id)
+        }
+      });
+      return;
+    }
+
     const matches = coupons.filter(coupon => ad.coupon_code ? coupon.coupon_code === ad.coupon_code : ad.vendor_id && String(coupon.vendor_id) === String(ad.vendor_id));
-    if (matches.length === 1) router.push({ pathname: '/listing-details', params: { id: String(matches[0].id) } });
-    else router.push({ pathname: '/(tabs)/listings', params: { search: ad.vendor_name || '' } });
+    if (matches.length === 1) router.push({ pathname: '/listing-details', params: { id: String(matches[0].id), ad_id: String(ad.id) } });
+    else router.push({ pathname: '/(tabs)/listings', params: { search: ad.vendor_name || '', ad_id: String(ad.id) } });
   };
 
   const openMarketplaceLink = async (ad: any) => {
+    if (ad?.id) trackAdClick(ad.id);
     const url = ad.link_url || ad.link || ad.url;
     if (url) {
       try {
