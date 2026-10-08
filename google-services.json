@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "996315648362",
+    "project_id": "roameo-5bb27",
+    "storage_bucket": "roameo-5bb27.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:996315648362:android:462f801a5f0cb559ee1513",
+        "android_client_info": {
+          "package_name": "com.btr.roameocustomerapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCjwq7R78t31-6xv7hI7aqraU1F6grKKpg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

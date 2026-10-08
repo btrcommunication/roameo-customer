@@ -9,7 +9,8 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.debraj09.roameocustomerapp",
+      "bundleIdentifier": "com.btr.roameocustomerapp",
+      "googleServicesFile": "./GoogleService-Info.plist",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -22,7 +23,13 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.debraj09.roameocustomerapp"
+      "package": "com.btr.roameocustomerapp",
+      "googleServicesFile": "./google-services.json",
+      "permissions": [
+        "android.permission.INTERNET",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -52,15 +59,12 @@
         "origin": false
       },
       "eas": {
-        "projectId": "1c99179e-3498-450f-b924-e74da2db250e"
+        "projectId": "d4df9cdb-457c-4107-af56-c56f3492a029"
       }
     },
     "runtimeVersion": {
       "policy": "appVersion"
     },
-    "updates": {
-      "url": "https://u.expo.dev/1c99179e-3498-450f-b924-e74da2db250e"
-    },
-    "owner": "debraj09"
+    "owner": "btrcommunication"
   }
 }

@@ -110,7 +110,7 @@ async function registerForPushNotificationsAsync() {
     }
     
     try {
-      const projectId = '1c99179e-3498-450f-b924-e74da2db250e'; // usually mapped to eas.json projectId
+      const projectId = 'd4df9cdb-457c-4107-af56-c56f3492a029'; // your new EAS project ID
       token = (await Notifications.getExpoPushTokenAsync({
         projectId,
       })).data;
