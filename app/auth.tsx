@@ -78,8 +78,9 @@ export default function AuthScreen() {
       } else {
         setLoginError(data.message || 'Login failed. Please try again.');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Login error:', error);
+      Alert.alert('Debug URL', `Trying to hit: ${API_BASE_URL}/api/auth/login\n\nError: ${error.message}`);
       setLoginError('Network error. Please check your connection.');
     } finally {
       setAuthLoading(false);
