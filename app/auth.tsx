@@ -2,6 +2,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
+import { registerPushTokenAfterLogin } from '../hooks/usePushNotifications';
 import { useState } from 'react';
 import {
   ActivityIndicator,
@@ -73,6 +74,7 @@ export default function AuthScreen() {
       if (response.ok && data.status === 'success') {
         await AsyncStorage.setItem('userToken', data.token);
         await AsyncStorage.setItem('userData', JSON.stringify(data.data));
+        registerPushTokenAfterLogin().catch(() => {});
         Alert.alert('Success', data.message || 'Logged in successfully!');
         router.replace('/(tabs)');
       } else {

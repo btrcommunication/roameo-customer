@@ -122,3 +122,10 @@ async function registerForPushNotificationsAsync() {
 
   return token;
 }
+
+export async function registerPushTokenAfterLogin() {
+  const token = await registerForPushNotificationsAsync();
+  if (token) {
+    await sendPushTokenToBackend(token);
+  }
+}
