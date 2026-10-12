@@ -1,4 +1,4 @@
-name: Build Android Preview
+name: Build Android & iOS Preview
 on:
   push:
     branches:
@@ -9,4 +9,11 @@ jobs:
     type: build
     params:
       platform: android
+      profile: preview
+
+  build_ios:
+    name: Build iOS Preview
+    type: build
+    params:
+      platform: ios
       profile: preview
