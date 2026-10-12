@@ -51,6 +51,24 @@ export function usePushNotifications() {
       });
       if (data && data.type === 'notification_ad') {
         console.log('[FCM Push] Tapped notification ad with ID:', data.adId);
+        const adPayload = {
+          id: data.adId,
+          title: response.notification.request.content.title || data.title,
+          message: response.notification.request.content.body || data.description,
+          description: response.notification.request.content.body || data.description,
+          image_url: data.imageUrl || data.image_url,
+          vendor_id: data.vendor_id,
+          vendor_name: data.vendor_name,
+          coupon_ids: data.coupon_ids,
+          coupon_id: data.coupon_id,
+          category_ids: data.category_ids,
+          category_id: data.category_id,
+          coupon_code: data.coupon_code,
+          target_type: data.target_type
+        };
+        AsyncStorage.setItem('pendingNotificationAd', JSON.stringify(adPayload)).catch(() => {});
+        // Route directly to home tab where the popup opens
+        router.push('/(tabs)');
       }
     });
 

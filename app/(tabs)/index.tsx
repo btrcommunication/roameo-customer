@@ -7,8 +7,8 @@ import { useWishlist } from '../../hooks/useWishlist';
 import { FontAwesome5, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
-import { useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useRouter, useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -120,17 +120,17 @@ export default function HomeScreen() {
 
   const [currentVendorIndex, setCurrentVendorIndex] = useState(0);
   const vendorCarouselRef = useRef<FlatList>(null);
-  const vendorAutoPlayTimer = useRef<NodeJS.Timeout | null>(null);
+  const vendorAutoPlayTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isVendorDragging, setIsVendorDragging] = useState(false);
 
   const [currentMarketplaceIndex, setCurrentMarketplaceIndex] = useState(0);
   const marketplaceCarouselRef = useRef<FlatList>(null);
-  const marketplaceAutoPlayTimer = useRef<NodeJS.Timeout | null>(null);
+  const marketplaceAutoPlayTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isMarketplaceDragging, setIsMarketplaceDragging] = useState(false);
 
   const [currentNewlyListedIndex, setCurrentNewlyListedIndex] = useState(0);
   const newlyListedCarouselRef = useRef<FlatList>(null);
-  const newlyListedAutoPlayTimer = useRef<NodeJS.Timeout | null>(null);
+  const newlyListedAutoPlayTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isNewlyListedDragging, setIsNewlyListedDragging] = useState(false);
 
   const [visibleCategoryCount, setVisibleCategoryCount] = useState(CATEGORY_VISIBLE_COUNT);
@@ -145,7 +145,7 @@ export default function HomeScreen() {
       setLoadingNotifications(true);
       const token = await AsyncStorage.getItem('userToken');
       // Using an open endpoint if token is missing just to show broadcast notifications
-      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
       const res = await fetch(`${process.env.EXPO_PUBLIC_BASE_URL}/api/profile/notifications`, { headers });
       const data = await res.json();
       if (data.success) {
@@ -168,6 +168,21 @@ export default function HomeScreen() {
       setLoadingNotifications(false);
     }
   };
+
+
+  useFocusEffect(
+    useCallback(() => {
+      AsyncStorage.getItem('pendingNotificationAd').then(val => {
+        if (val) {
+          try {
+            const adData = JSON.parse(val);
+            AsyncStorage.removeItem('pendingNotificationAd');
+            setSelectedNotification(adData);
+          } catch (e) {}
+        }
+      });
+    }, [])
+  );
 
   const openNotifications = () => {
     setNotificationsModalVisible(true);
@@ -1550,12 +1565,25 @@ export default function HomeScreen() {
       <Modal visible={!!selectedNotification} animationType="fade" transparent>
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
           <View style={{ backgroundColor: '#fff', borderRadius: 16, width: '100%', maxWidth: 400, overflow: 'hidden' }}>
-            {selectedNotification?.image_url && (
-              <Image source={{ uri: `${process.env.EXPO_PUBLIC_BASE_URL}${selectedNotification?.image_url}` }} style={{ width: '100%', height: 200, backgroundColor: '#F2F2F7' }} />
-            )}
-            <View style={{ padding: 20 }}>
-              <Text style={{ fontSize: 20, fontWeight: 'bold', marginBottom: 10, color: '#1C1C1E' }}>{selectedNotification?.title}</Text>
-              <Text style={{ fontSize: 14, color: '#3A3A3C', lineHeight: 20, marginBottom: 20 }}>{selectedNotification?.message}</Text>
+            <TouchableOpacity 
+              activeOpacity={0.9} 
+              onPress={() => {
+                const ad = selectedNotification;
+                dismissSelectedNotification();
+                if (ad) {
+                  openAdCoupon(ad);
+                }
+              }}
+            >
+              {selectedNotification?.image_url && (
+                <Image source={{ uri: `${process.env.EXPO_PUBLIC_BASE_URL}${selectedNotification?.image_url}` }} style={{ width: '100%', height: 200, backgroundColor: '#F2F2F7' }} />
+              )}
+              <View style={{ padding: 20, paddingBottom: 10 }}>
+                <Text style={{ fontSize: 20, fontWeight: 'bold', marginBottom: 10, color: '#1C1C1E' }}>{selectedNotification?.title}</Text>
+                <Text style={{ fontSize: 14, color: '#3A3A3C', lineHeight: 20, marginBottom: 10 }}>{selectedNotification?.message || selectedNotification?.description}</Text>
+              </View>
+            </TouchableOpacity>
+            <View style={{ paddingHorizontal: 20, paddingBottom: 20 }}>
               <TouchableOpacity 
                 style={{ backgroundColor: '#FF6B00', paddingVertical: 12, borderRadius: 8, alignItems: 'center' }}
                 onPress={dismissSelectedNotification}

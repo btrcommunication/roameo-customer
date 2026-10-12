@@ -6,11 +6,13 @@ import { useCallback, useEffect, useState } from 'react';
 import { Alert, Text, TouchableOpacity, View } from 'react-native';
 import { readCart, subscribeCartChanges } from '../../constants/cart';
 import { useWishlist } from '../../hooks/useWishlist';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function TabLayout() {
   const router = useRouter();
   const [cartCount, setCartCount] = useState(0);
   const wishlist = useWishlist();
+  const insets = useSafeAreaInsets();
 
   const fetchCartCount = useCallback(async () => {
     try {
@@ -72,7 +74,9 @@ export default function TabLayout() {
           backgroundColor: '#FFFFFF',
           borderTopWidth: 1,
           borderTopColor: '#F2F2F7',
-          height: 60,
+          height: 60 + (insets.bottom > 0 ? insets.bottom : 8),
+          paddingBottom: insets.bottom > 0 ? insets.bottom : 8,
+          paddingTop: 6,
         },
         headerShown: true,
         headerStyle: {

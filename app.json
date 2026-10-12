@@ -25,6 +25,11 @@
       "predictiveBackGestureEnabled": false,
       "package": "com.btr.roameocustomerapp",
       "googleServicesFile": "./google-services.json",
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyDdJhnboPGUUQff1spvfa40PeSJXwtXqkc"
+        }
+      },
       "permissions": [
         "android.permission.INTERNET",
         "android.permission.ACCESS_COARSE_LOCATION",

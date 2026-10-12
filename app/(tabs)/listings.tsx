@@ -81,6 +81,7 @@ export default function ListingsScreen() {
     category_ids?: string;
     coupon_ids?: string;
     vendor_id?: string;
+    ad_id?: string;
   }>();
   const wishlist = useWishlist();
   const [cartMessage, setCartMessage] = useState('');
@@ -863,6 +864,7 @@ export default function ListingsScreen() {
 
       <ScrollView
         style={styles.container}
+        contentContainerStyle={{ paddingBottom: 100 }}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#FF6B00']} />}
       >
@@ -1047,14 +1049,19 @@ export default function ListingsScreen() {
           <View style={styles.mapWrapper}>
             <View style={styles.mapImage}>
               <MapView
-                provider="google"
+                provider={Platform.OS === 'android' ? 'google' : undefined}
                 style={{ flex: 1 }}
                 initialRegion={(() => {
-                  if (listings.length === 0) return { latitude: 22.5726, longitude: 88.3639, latitudeDelta: 0.05, longitudeDelta: 0.05 };
-                  const validItem = listings.find(i => i.latitude && i.longitude);
+                  const validItem = listings.find(i => {
+                    const lat = Number(i.latitude);
+                    const lng = Number(i.longitude);
+                    return !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0;
+                  });
+                  const lat = Number(validItem?.latitude);
+                  const lng = Number(validItem?.longitude);
                   return {
-                    latitude: Number(validItem?.latitude) || 22.5726,
-                    longitude: Number(validItem?.longitude) || 88.3639,
+                    latitude: !isNaN(lat) && lat !== 0 ? lat : 22.5726,
+                    longitude: !isNaN(lng) && lng !== 0 ? lng : 88.3639,
                     latitudeDelta: 0.05,
                     longitudeDelta: 0.05,
                   };
