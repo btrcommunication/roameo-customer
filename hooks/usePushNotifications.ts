@@ -27,22 +27,30 @@ export function usePushNotifications() {
       setExpoPushToken(token);
       if (token) {
         sendPushTokenToBackend(token);
+      } else {
+        console.warn('[FCM Push] No token returned from registerForPushNotificationsAsync');
       }
     });
 
-    // This listener is fired whenever a notification is received while the app is foregrounded
-    notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
-      setNotification(notification);
+    // Fired whenever a notification is received while the app is in foreground
+    notificationListener.current = Notifications.addNotificationReceivedListener(notif => {
+      console.log('[FCM Push] Notification received in foreground:', {
+        title: notif.request.content.title,
+        body: notif.request.content.body,
+        data: notif.request.content.data
+      });
+      setNotification(notif);
     });
 
-    // This listener is fired whenever a user taps on or interacts with a notification 
-    // (works when app is foregrounded, backgrounded, or killed)
+    // Fired whenever a user taps or interacts with a notification
     responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
       const data = response.notification.request.content.data;
+      console.log('[FCM Push] User clicked notification:', {
+        title: response.notification.request.content.title,
+        data: data
+      });
       if (data && data.type === 'notification_ad') {
-        // You could pass the adId to a global state or immediately navigate
-        console.log('Tapped notification ad with ID:', data.adId);
-        // Add navigation logic or set some state here to trigger the popup
+        console.log('[FCM Push] Tapped notification ad with ID:', data.adId);
       }
     });
 
@@ -65,22 +73,39 @@ export function usePushNotifications() {
 async function sendPushTokenToBackend(token: string) {
   try {
     const userToken = await AsyncStorage.getItem('userToken');
-    if (!userToken) return; // Only send if user is logged in
+    const baseURL = process.env.EXPO_PUBLIC_BASE_URL || 'https://roameoapp.jlpartners.in';
+    const targetUrl = `${baseURL}/api/auth/save-push-token`;
     
-    // NOTE: Hardcoding the local IP because process.env.EXPO_PUBLIC_BASE_URL might not be configured identically 
-    // everywhere, but assuming EXPO_PUBLIC_BASE_URL is available
-    const baseURL = process.env.EXPO_PUBLIC_BASE_URL || 'http://192.168.0.101:3000';
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
     
-    await fetch(`${baseURL}/api/auth/save-push-token`, {
+    // Attach user auth token if logged in and not in demo mode
+    if (userToken && userToken !== 'demo-token') {
+      headers['Authorization'] = `Bearer ${userToken}`;
+    }
+
+    console.log(`[FCM Push] Registering device token to backend: ${targetUrl}`);
+    console.log(`[FCM Push] Device Token prefix: ${token.substring(0, 20)}...`);
+
+    const response = await fetch(targetUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${userToken}`,
-      },
-      body: JSON.stringify({ token }),
+      headers,
+      body: JSON.stringify({ 
+        token,
+        platform: Platform.OS 
+      }),
     });
+
+    const responseData = await response.json().catch(() => null);
+
+    if (response.ok) {
+      console.log('[FCM Push] Device push token successfully registered on backend:', responseData);
+    } else {
+      console.error(`[FCM Push Error] Backend returned status ${response.status} when saving push token:`, responseData);
+    }
   } catch (error) {
-    console.error('Error saving push token:', error);
+    console.error('[FCM Push Error] Failed to send push token to backend:', error);
   }
 }
 
@@ -94,6 +119,7 @@ async function registerForPushNotificationsAsync() {
       vibrationPattern: [0, 250, 250, 250],
       lightColor: '#FF231F7C',
     });
+    console.log('[FCM Push] Android notification channel "default" initialized');
   }
 
   if (Device.isDevice && Platform.OS !== 'web') {
@@ -101,29 +127,37 @@ async function registerForPushNotificationsAsync() {
     let finalStatus = existingStatus;
     
     if (existingStatus !== 'granted') {
+      console.log('[FCM Push] Requesting notification permissions...');
       const { status } = await Notifications.requestPermissionsAsync();
       finalStatus = status;
     }
+
+    console.log(`[FCM Push] Notification permission status: "${finalStatus}"`);
+
     if (finalStatus !== 'granted') {
-      console.log('Failed to get push token for push notification!');
+      console.error('[FCM Push Error] Notification permission NOT granted by user!');
       return;
     }
     
     try {
-      // Get the raw FCM device token for Firebase instead of Expo Push Token
-      token = (await Notifications.getDevicePushTokenAsync()).data;
+      // Get the raw FCM device token for Firebase
+      console.log('[FCM Push] Requesting raw FCM device push token from Firebase...');
+      const deviceTokenResult = await Notifications.getDevicePushTokenAsync();
+      token = deviceTokenResult.data;
+      console.log('[FCM Push] Obtained FCM device push token:', token);
     } catch (e) {
-      console.error("Error getting device push token:", e);
+      console.error('[FCM Push Error] Error getting device push token from Firebase:', e);
     }
     
   } else {
-    console.log('Must use physical device for Push Notifications');
+    console.warn('[FCM Push Warning] Push notifications requires a physical device (Device.isDevice is false or platform is web).');
   }
 
   return token;
 }
 
 export async function registerPushTokenAfterLogin() {
+  console.log('[FCM Push] registerPushTokenAfterLogin triggered');
   const token = await registerForPushNotificationsAsync();
   if (token) {
     await sendPushTokenToBackend(token);
