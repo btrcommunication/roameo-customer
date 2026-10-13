@@ -150,7 +150,7 @@ export default function OrdersScreen() {
 
       <ScrollView
         style={styles.container}
-        contentContainerStyle={{ paddingTop: 14, paddingBottom: 40 }}
+        contentContainerStyle={{ paddingTop: 14, paddingBottom: 100 }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} />}
       >
         {/* Tabs */}

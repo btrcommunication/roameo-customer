@@ -3,6 +3,7 @@ import { Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { usePushNotifications } from '../hooks/usePushNotifications';
+import { LoginPromptModal } from '../components/LoginPromptModal';
 
 export default function RootLayout() {
   const [isReady, setIsReady] = useState(false);
@@ -39,6 +40,7 @@ export default function RootLayout() {
   }
 
   return (
+    <>
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen 
         name="splash" 
@@ -64,5 +66,7 @@ export default function RootLayout() {
         }} 
       />
     </Stack>
+      <LoginPromptModal />
+    </>
   );
 }

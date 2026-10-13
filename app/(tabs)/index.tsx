@@ -18,7 +18,6 @@ import {
   Linking,
   Modal,
   RefreshControl,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -26,6 +25,7 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width } = Dimensions.get('window');
 
@@ -76,6 +76,7 @@ const getImageUrl = (imagePath: string | null | undefined): string | null => {
 
 export default function HomeScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const wishlist = useWishlist();
 
   const [userData, setUserData] = useState<any>(null);
@@ -1493,7 +1494,7 @@ export default function HomeScreen() {
                 resizeMode="contain"
               />
             </View>
-            <View style={styles.modalFooter}>
+            <View style={[styles.modalFooter, { paddingBottom: insets.bottom > 0 ? insets.bottom + 8 : 16 }]}>
               {modalType !== 'country' && selectedCountry && (
                 <TouchableOpacity style={styles.modalFooterButton} onPress={() => { setModalType('country'); setModalVisible(true); }}>
                   <Text style={styles.modalFooterButtonText}>← Change Country</Text>
@@ -1511,7 +1512,7 @@ export default function HomeScreen() {
       {/* Notifications Modal */}
       <Modal visible={notificationsModalVisible} animationType="slide" transparent>
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
-          <View style={{ backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '80%', padding: 20 }}>
+          <View style={{ backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '80%', padding: 20, paddingBottom: insets.bottom > 0 ? insets.bottom + 16 : 20 }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 }}>
               <Text style={{ fontSize: 20, fontWeight: 'bold' }}>Notifications</Text>
               <TouchableOpacity onPress={() => setNotificationsModalVisible(false)}>

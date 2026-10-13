@@ -7,20 +7,23 @@ import {
   Image,
   Modal,
   RefreshControl,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CartItem as DemoCartItem, readCart, setCartQuantity, removeCartItem, clearSavedCart, isDemoSession, subscribeCartChanges } from '../../constants/cart';
 
 import { Order, placeOrder, createPaymentIntent, confirmPaymentOrder } from '../../constants/orders';
 import { openStripeCheckout } from '../../constants/stripeCheckout';
+import { promptLogin } from '../../components/LoginPromptModal';
 
 export default function CartScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [cartError, setCartError] = useState('');
   const [clearModalVisible, setClearModalVisible] = useState(false);
   const [clearingCart, setClearingCart] = useState(false);
@@ -170,6 +173,11 @@ export default function CartScreen() {
 
   const handleCheckout = async (items = cartItems) => {
     setCartError('');
+    const token = await AsyncStorage.getItem('userToken');
+    if (!token || token === 'demo-token') {
+      promptLogin('Please log in or register to place your order.');
+      return;
+    }
     setDemoCheckout(await isDemoSession());
     if (items.some(item => item.pricing_configured === false)) {
       setCartError('A coupon has no price. Checkout is unavailable until its price is configured.');
@@ -282,6 +290,7 @@ export default function CartScreen() {
 
       <ScrollView
         style={styles.scrollView}
+        contentContainerStyle={{ paddingBottom: 100 }}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#FF6B00']} />
         }
@@ -437,7 +446,7 @@ export default function CartScreen() {
         </View>
         ) : (
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, { paddingBottom: insets.bottom > 0 ? insets.bottom + 16 : 20 }]}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Checkout</Text>
               <TouchableOpacity disabled={paymentLoading} onPress={() => setCheckoutModalVisible(false)}>
@@ -445,7 +454,7 @@ export default function CartScreen() {
               </TouchableOpacity>
             </View>
 
-            <ScrollView>
+            <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom > 0 ? insets.bottom + 12 : 16 }}>
               <View style={styles.modalBody}>
                 {/* Order summary */}
                     {cartItems.map(item => (

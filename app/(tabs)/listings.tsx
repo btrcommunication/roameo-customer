@@ -9,11 +9,11 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Dimensions,
   Image,
   Modal,
   RefreshControl,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -22,8 +22,10 @@ import {
   View,
   Platform
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import MapView, { Marker, Callout } from 'react-native-maps';
 import { addCartItem, readCart, subscribeCartChanges } from '../../constants/cart';
+import { promptLogin } from '../../components/LoginPromptModal';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_BASE_URL;
 const { width, height } = Dimensions.get('window');
@@ -74,6 +76,7 @@ const LIST_IMAGE_HEIGHT = 92;
 
 export default function ListingsScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{
     search?: string;
     category?: string;
@@ -382,6 +385,11 @@ export default function ListingsScreen() {
 
   const addToCart = async (coupon: any) => {
     if (addingRef.current) return;
+    const token = await AsyncStorage.getItem('userToken');
+    if (!token || token === 'demo-token') {
+      promptLogin('Please log in or register to get this coupon.');
+      return;
+    }
     addingRef.current = true;
     setAddingToCart(coupon.id);
     try {
@@ -829,7 +837,7 @@ export default function ListingsScreen() {
           </View>
 
           {/* Modal Footer */}
-          <View style={styles.filterModalFooter}>
+          <View style={[styles.filterModalFooter, { paddingBottom: insets.bottom > 0 ? insets.bottom + 10 : 14 }]}>
             <TouchableOpacity
               style={styles.filterModalCloseBtn}
               onPress={() => setIsFilterModalOpen(false)}
@@ -856,7 +864,7 @@ export default function ListingsScreen() {
           </TouchableOpacity>
           <Image source={require('../../assets/images/Roameo-logo.png')} style={styles.headerLogo} resizeMode="contain" />
         </View>
-        <TouchableOpacity style={styles.notificationButton}>
+        <TouchableOpacity style={styles.notificationButton} onPress={() => router.push('/notifications' as any)}>
           <Ionicons name="notifications-outline" size={24} color="#000" />
           <View style={styles.notificationDot} />
         </TouchableOpacity>

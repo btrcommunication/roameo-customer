@@ -63,6 +63,8 @@ async function resolveVendors(items: CartItem[]): Promise<CartItem[]> {
 }
 
 export async function readCart(): Promise<CartItem[]> {
+  const token = await AsyncStorage.getItem('userToken');
+  if (!token) return [];
   if (await isDemoSession()) return resolveVendors(await readDemoCart());
   const result = await request('GET');
   if (!Array.isArray(result.data?.items)) throw new Error('Invalid cart response.');

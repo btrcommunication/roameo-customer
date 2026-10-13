@@ -10,12 +10,12 @@ import {
   FlatList,
   Image,
   RefreshControl,
-  SafeAreaView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_BASE_URL;
 
@@ -236,7 +236,7 @@ const styles = StyleSheet.create({
   // List
   listContent: {
     padding: 16,
-    paddingBottom: 32,
+    paddingBottom: 100,
   },
   headerCount: {
     fontSize: 12,

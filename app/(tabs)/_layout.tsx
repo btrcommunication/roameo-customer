@@ -19,7 +19,7 @@ export default function TabLayout() {
       const items = await readCart();
       setCartCount(items.reduce((sum, item) => sum + item.quantity, 0));
     } catch (error) {
-      console.error('Fetch cart count error:', error);
+      setCartCount(0);
     }
   }, []);
 
@@ -93,6 +93,14 @@ export default function TabLayout() {
         },
         headerRight: () => (
           <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 16 }}>
+            {/* Header Notification Button */}
+            <TouchableOpacity
+              onPress={() => router.push('/notifications' as any)}
+              style={{ marginRight: 16 }}
+            >
+              <Ionicons name="notifications-outline" size={24} color="#1C1C1E" />
+            </TouchableOpacity>
+
             {/* Header Cart Button with Badge */}
             <TouchableOpacity
               onPress={() => router.push('/(tabs)/cart')}

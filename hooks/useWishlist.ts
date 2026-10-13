@@ -1,8 +1,12 @@
 import { useCallback, useRef, useState } from 'react';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { Alert } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { promptLogin } from '../components/LoginPromptModal';
 import { clearWishlist, readWishlist, setWishlistSaved, subscribeWishlist, WishlistCoupon, WishlistLoginError } from '../constants/wishlist';
 
 export function useWishlist() {
+  const router = useRouter();
   const [items, setItems] = useState<WishlistCoupon[]>([]);
   const [loading, setLoading] = useState(true);
   const [ready, setReady] = useState(false);
@@ -35,7 +39,13 @@ export function useWishlist() {
     return () => { active.current = false; generation.current++; unsubscribe(); };
   }, [refresh]));
   const toggle = async (id: number) => {
-    if (busy.current || loading || !ready) return;
+    if (busy.current || loading) return;
+    const token = await AsyncStorage.getItem('userToken');
+    if (!token || token === 'demo-token') {
+      promptLogin('Please log in or register to save items to your wishlist.');
+      return;
+    }
+    if (!ready) return;
     busy.current = true; setPending(id); setError('');
     try { await setWishlistSaved(id, !items.some(item => item.id === id)); }
     catch (cause) {
@@ -46,7 +56,13 @@ export function useWishlist() {
     } finally { busy.current = false; if (active.current) setPending(null); }
   };
   const removeAll = async () => {
-    if (busy.current || loading || !ready || !items.length) return;
+    if (busy.current || loading || !items.length) return;
+    const token = await AsyncStorage.getItem('userToken');
+    if (!token || token === 'demo-token') {
+      promptLogin('Please log in or register to manage your wishlist.');
+      return;
+    }
+    if (!ready) return;
     busy.current = true; setPending(0); setError('');
     try {
       await clearWishlist();

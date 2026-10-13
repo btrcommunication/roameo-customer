@@ -31,6 +31,8 @@ export async function wishlistRequest(method: string, id?: number) {
   return result;
 }
 export async function readWishlist(): Promise<WishlistCoupon[]> {
+  const token = await AsyncStorage.getItem('userToken');
+  if (!token || token === 'demo-token') return [];
   const result = await wishlistRequest('GET');
   if (!Array.isArray(result.data?.items)) throw new Error('Invalid wishlist response.');
   return result.data.items.map((item: WishlistCoupon) => ({

@@ -2,18 +2,22 @@ import { couponImageUrl, isApprovedCoupon } from '../constants/couponMedia';
 import { formatCouponPrice } from '../constants/couponPrice';
 import { addCartItem, readCart } from '../constants/cart';
 import { useWishlist } from '../hooks/useWishlist';
+import { promptLogin } from '../components/LoginPromptModal';
 import { WishlistNotice } from '../components/WishlistNotice';
 // app/listing-details.tsx
 import { AntDesign, Feather, FontAwesome5, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Dimensions, Image, Linking, Share, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Dimensions, Image, Linking, Share, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width } = Dimensions.get('window');
 const API_BASE_URL = process.env.EXPO_PUBLIC_BASE_URL;
 
 export default function ListingDetailsScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams();
   const listingId = Array.isArray(params.id) ? params.id[0] : params.id;
   
@@ -91,6 +95,11 @@ export default function ListingDetailsScreen() {
     ? new Date(value).toLocaleDateString() : 'Not specified';
   const checkout = async () => {
     if (addingRef.current || getStatus() !== 'Available') return;
+    const token = await AsyncStorage.getItem('userToken');
+    if (!token || token === 'demo-token') {
+      promptLogin('Please log in or register to get this coupon.');
+      return;
+    }
     addingRef.current = true;
     setAdding(true);
     setActionMessage('');
@@ -162,7 +171,7 @@ export default function ListingDetailsScreen() {
         </View>
       </View>
 
-      <ScrollView ref={scrollRef} style={styles.container} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 90 }}>
+      <ScrollView ref={scrollRef} style={styles.container} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 80 + (insets.bottom > 0 ? insets.bottom : 12) }}>
         {/* Banner Media Block */}
         <View style={styles.mediaBannerContainer}>
           <Image
@@ -368,7 +377,7 @@ export default function ListingDetailsScreen() {
       </ScrollView>
 
       {/* Floating Sticky Bottom Primary CTA Box */}
-      <View style={styles.stickyActionFooter}>
+      <View style={[styles.stickyActionFooter, { paddingBottom: insets.bottom > 0 ? insets.bottom + 8 : 12 }]}>
         <TouchableOpacity style={[styles.primaryActionButton, (adding || status !== 'Available') && { opacity: 0.5 }]} onPress={checkout} disabled={adding || status !== 'Available'}>
           <Text style={styles.primaryActionText}>{adding ? 'Adding...' : status === 'Available' ? `Get Coupon - ${priceDisplay}` : status}</Text>
         </TouchableOpacity>

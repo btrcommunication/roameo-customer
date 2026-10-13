@@ -12,7 +12,6 @@ import {
   KeyboardAvoidingView,
   Modal,
   Platform,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -20,11 +19,13 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_BASE_URL;
 
 export default function ProfileScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const wishlist = useWishlist();
   
   // State variables
@@ -339,7 +340,7 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        <ScrollView style={styles.container} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+        <ScrollView style={styles.container} contentContainerStyle={{ padding: 16, paddingBottom: 100 }}>
           <View style={styles.guestCardContainer}>
             <View style={styles.guestAvatarContainer}>
               <Ionicons name="person-circle-outline" size={80} color="#FF6B00" />
@@ -393,7 +394,7 @@ export default function ProfileScreen() {
         <Text style={styles.headerTitleText}>Profile</Text>
         
         <View style={styles.rightHeaderControls}>
-          <TouchableOpacity style={styles.iconHeaderButton}>
+          <TouchableOpacity style={styles.iconHeaderButton} onPress={() => router.push('/notifications' as any)}>
             <Ionicons name="notifications-outline" size={24} color="#1C1C1E" />
             <View style={styles.orangeAlertDot} />
           </TouchableOpacity>
@@ -652,7 +653,7 @@ export default function ProfileScreen() {
               </View>
             </ScrollView>
 
-            <View style={styles.modalFooter}>
+            <View style={[styles.modalFooter, { paddingBottom: insets.bottom > 0 ? insets.bottom + 8 : 16 }]}>
               <TouchableOpacity 
                 style={[styles.modalButton, styles.cancelButton]}
                 onPress={() => setEditModalVisible(false)}
@@ -1103,8 +1104,8 @@ const styles = StyleSheet.create({
   loginButtonLarge: {
     flexDirection: 'row',
     backgroundColor: '#FF6B00',
-    marginHorizontal: 16,
-    paddingVertical: 16,
+    width: '100%',
+    paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
