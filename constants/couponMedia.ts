@@ -2,7 +2,10 @@ const API_ORIGIN = process.env.EXPO_PUBLIC_BASE_URL;
 
 export function couponImageUrl(value: unknown): string {
   if (typeof value !== 'string' || !value.trim()) return '';
-  const path = value.trim();
+  let path = value.trim();
+  if (path.includes('roameomobileapp.braventra.in') && API_ORIGIN) {
+    path = path.replace(/^https?:\/\/roameomobileapp\.braventra\.in/i, API_ORIGIN);
+  }
   if (/^https?:\/\//i.test(path)) return path;
   return `${API_ORIGIN}/${path.replace(/^\/+/, '')}`;
 }
